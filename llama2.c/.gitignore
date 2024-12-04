@@ -52,5 +52,3 @@ logs/
 # Local development settings
 *.local
 config.local.*
-
-*.model
