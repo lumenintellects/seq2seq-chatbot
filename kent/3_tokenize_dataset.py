@@ -3,7 +3,8 @@ import os
 import time
 import pandas as pd
 import spacy
-from common import PATH_WORKSPACE_ROOT, csv_filename, pt_filename, pkl_filename
+from common import PATH_WORKSPACE_ROOT, FOLDER_DATASET, BASE_FILENAME_MODEL
+from common import csv_filename, pt_filename, pkl_filename, pth_filename
 import torch
 import pickle
 import numpy as np
@@ -132,17 +133,16 @@ if __name__ == "__main__":
 
     # ==========================
 
-    folder_dataset = 'dataset'
     base_filename = 'ubuntu_dialogue_corpus_196_input_output_pairs'
-    path_input_csv = os.path.join(folder_dataset, csv_filename(base_filename))
-    path_vocab_pkl = os.path.join(folder_dataset, pkl_filename(f"{base_filename}_vocab"))
-    path_input_sequences = os.path.join(folder_dataset, pt_filename(f"{base_filename}_input_sequences"))
-    path_output_sequences = os.path.join(folder_dataset, pt_filename(f"{base_filename}_output_sequences"))
-    path_input_sequences_padded_batch_pattern = os.path.join(folder_dataset, pt_filename(f"{base_filename}_input_sequences_padded_batch_*"))
-    path_output_sequences_padded_batch_pattern = os.path.join(folder_dataset, pt_filename(f"{base_filename}_output_sequences_padded_batch_*"))
+    path_input_csv = os.path.join(FOLDER_DATASET, csv_filename(base_filename))
+    path_vocab_pkl = os.path.join(FOLDER_DATASET, pkl_filename(f"{base_filename}_vocab"))
+    path_input_sequences = os.path.join(FOLDER_DATASET, pt_filename(f"{base_filename}_input_sequences"))
+    path_output_sequences = os.path.join(FOLDER_DATASET, pt_filename(f"{base_filename}_output_sequences"))
+    path_input_sequences_padded_batch_pattern = os.path.join(FOLDER_DATASET, pt_filename(f"{base_filename}_input_sequences_padded_batch_*"))
+    path_output_sequences_padded_batch_pattern = os.path.join(FOLDER_DATASET, pt_filename(f"{base_filename}_output_sequences_padded_batch_*"))
 
     # Define the save path
-    path_model = os.path.join(PATH_WORKSPACE_ROOT, "seq2seq_model.pth")
+    path_model = os.path.join(PATH_WORKSPACE_ROOT, pth_filename(BASE_FILENAME_MODEL))
 
     # ==========================
 
@@ -250,7 +250,7 @@ if __name__ == "__main__":
             print(f"Batch {i // BATCH_SIZE} shape:", padded_batch.shape)
 
             batch_file_name = pt_filename(f"{base_filename}_input_sequences_padded_batch_{i // BATCH_SIZE}")
-            batch_file_path = os.path.join(folder_dataset, batch_file_name)
+            batch_file_path = os.path.join(FOLDER_DATASET, batch_file_name)
             torch.save(padded_batch, batch_file_path)
             print(f"Saved batch {i // BATCH_SIZE} to {batch_file_path}")
 
@@ -316,7 +316,7 @@ if __name__ == "__main__":
             print(f"Batch {i // BATCH_SIZE} shape:", padded_batch.shape)
 
             batch_file_name = pt_filename(f"{base_filename}_output_sequences_padded_batch_{i // BATCH_SIZE}")
-            batch_file_path = os.path.join(folder_dataset, batch_file_name)
+            batch_file_path = os.path.join(FOLDER_DATASET, batch_file_name)
             torch.save(padded_batch, batch_file_path)
             print(f"Saved batch {i // BATCH_SIZE} to {batch_file_path}")
 

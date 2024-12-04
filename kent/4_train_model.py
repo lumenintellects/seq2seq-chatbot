@@ -10,7 +10,6 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 import pickle
 import numpy as np
-from torch.utils.data import Subset
 import logging
 from sklearn.model_selection import train_test_split
 

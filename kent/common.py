@@ -3,18 +3,22 @@ import os
 import pandas as pd
 import torch.nn as nn
 
-PATH_WORKSPACE_ROOT = r'D:\git\azure\Personal\schoolwork\module_natural_language_processing\end_of_module_assignment\workspace'
-FOLDER_DATASET = 'dataset'
+PATH_WORKSPACE_ROOT = r'.' # Set the workspace root path here
+FOLDER_DATASET = 'dataset' # Set the name of the folder containing the datasets here
+
 EXTENSION_CSV = '.csv'
 EXTENSION_PT = '.pt'
 EXTENSION_PKL = '.pkl'
 EXTENSION_JSON = '.json'
 EXTENSION_LOG = '.log'
+EXTENSION_PTH = '.pth'
 
 MODE_READONLY = 'r'
 
-BASE_FILENAME_SETTINGS = 'settings'
+BASE_FILENAME_SETTINGS = 'settings' # Set the base filename for the settings JSON file here
+BASE_FILENAME_MODEL = 'seq2seq_model'
 
+# Define the settings keys inside the settings JSON file
 SETTING_ENABLE_LOGGING = 'enableLogging'
 SETTING_TRAINING_LOOP_CONTINUE = 'trainingLoopContinue'
 SETTING_NEXT_SUBSET_CONTINUE = 'nextSubsetContinue'
@@ -253,3 +257,15 @@ def log_filename(name):
         str: The full path to the log file.
     """
     return f"{name}{EXTENSION_LOG}"
+
+def pth_filename(name):
+    """
+    Create a PTH filename with the given name.
+
+    Parameters:
+        name (str): The name of the PTH file.
+
+    Returns:
+        str: The full path to the PTH file.
+    """
+    return f"{name}{EXTENSION_PTH}"
