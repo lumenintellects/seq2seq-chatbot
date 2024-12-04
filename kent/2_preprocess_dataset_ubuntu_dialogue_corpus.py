@@ -4,6 +4,10 @@ import numpy as np
 from common import PATH_WORKSPACE_ROOT, FOLDER_DATASET, clean_text, csv_filename
 from concurrent.futures import ProcessPoolExecutor
 
+# ==========================
+
+# NOTE: THIS PRE-PROCESSING SCRIPT CONTAINS TRANSFORMATION LOGIC SPECIFIC TO THE UBUNTU DIALOGUE CORPUS DATASETS
+
 N_CHUNKS = 8
 LENGTH_PERCENTILE = 95  # Percentile for filtering sequence lengths
 
