@@ -1,0 +1,10 @@
+{
+  "enableLogging": true,
+  "debugMode": false,
+
+  "trainingSubsetSize": 1000,
+  "nextSubsetContinue": true,
+  "trainingLoopContinue": true,
+
+  "analyzeSequences": false
+}
