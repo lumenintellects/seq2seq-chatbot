@@ -1,0 +1,56 @@
+# IDE and Editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+.env
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# C build artifacts
+*.o
+*.out
+run
+runq
+testc
+
+# Model files and data
+*.bin
+*.pt
+data/
+out*/
+test/
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb_checkpoints/
+
+# Log files
+*.log
+logs/
+
+# Distribution / packaging
+*.tar.gz
+*.zip
+
+# Local development settings
+*.local
+config.local.*
+
+*.model
