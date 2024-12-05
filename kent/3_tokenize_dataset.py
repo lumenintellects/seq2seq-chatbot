@@ -302,7 +302,7 @@ if __name__ == "__main__":
     if len(glob.glob(path_output_sequences_padded_batch_pattern)) > 0:
         logger.info("Serialized padded output sequences found.")
     else:
-        output_sequences = torch.load(path_output_sequences)
+        output_sequences = torch.load(path_output_sequences, weights_only=True)
 
         output_lengths = [len(seq) for seq in output_sequences]
         output_max_length = max(output_lengths)
