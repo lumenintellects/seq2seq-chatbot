@@ -9,17 +9,16 @@ from concurrent.futures import ProcessPoolExecutor
 
 # Set the current working directory using the constant from common.py
 os.chdir(PATH_WORKSPACE_ROOT)
-LOG_BASE_FILENAME = "2_preprocess_dataset_ubuntu_dialogue_corpus"
-LOG_FOLDER = 'dataset'
+LOG_BASE_FILENAME = "2_preprocess_dataset"
 
 N_CHUNKS = 8
 LENGTH_PERCENTILE = 95  # Percentile for filtering sequence lengths
 
 # ==========================
 
-base_filename = 'ubuntu_dialogue_corpus_000'
-path_input_csv = get_path_source_csv(base_filename)
-path_output_csv = get_path_input_output_pairs(base_filename)
+DATASET_NAME = 'ubuntu_dialogue_corpus_000'
+path_input_csv = get_path_source_csv(DATASET_NAME)
+path_output_csv = get_path_input_output_pairs(DATASET_NAME)
 
 # ==========================
 
@@ -127,7 +126,7 @@ def process_chunk(args):
 if __name__ == "__main__":
 
     log_start_time = time.strftime('%Y%m%d_%H%M%S')
-    path_log = get_path_log(LOG_BASE_FILENAME, log_start_time)
+    path_log = get_path_log(LOG_BASE_FILENAME, DATASET_NAME, log_start_time)
 
     # Set up logging configuration
     logging.basicConfig(

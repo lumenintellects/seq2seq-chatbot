@@ -9,9 +9,10 @@ from common import PATH_WORKSPACE_ROOT, get_path_source_csv, get_path_outliers  
 # Set the current working directory using the constant from common.py
 os.chdir(PATH_WORKSPACE_ROOT)
 LOG_BASE_FILENAME = "1_load_and_inspect_dataset"
+DATASET_NAME = 'ubuntu_dialogue_corpus_000'
 
 log_start_time = time.strftime('%Y%m%d_%H%M%S')
-path_log = get_path_log(LOG_BASE_FILENAME, log_start_time)
+path_log = get_path_log(LOG_BASE_FILENAME, DATASET_NAME, log_start_time)
 
 # Set up logging configuration
 logging.basicConfig(
@@ -27,8 +28,7 @@ logger = logging.getLogger(__name__)
 
 # ==========================
 
-base_filename = 'ubuntu_dialogue_corpus_000'
-path_input_csv = get_path_source_csv(base_filename)
+path_input_csv = get_path_source_csv(DATASET_NAME)
 
 # ==========================
 
@@ -79,6 +79,6 @@ logger.info(outliers[['dialogueID', 'from', 'text', 'text_length']].head())
 # ==========================
 
 # Save outlier entries to a separate file (optional)
-path_outliers_csv = get_path_outliers(base_filename)
+path_outliers_csv = get_path_outliers(DATASET_NAME)
 outliers.to_csv(path_outliers_csv, index=False)
 logger.info(f"\nOutliers saved to: {path_outliers_csv}")

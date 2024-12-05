@@ -110,7 +110,7 @@ NAME_TOKEN_SEQ = 'seq'
 NAME_TOKEN_PADDED = 'padded'
 NAME_TOKEN_BATCH = 'batch'
 
-def get_path_log(base, timestamp_token):
+def get_path_log(base, dataset_name, timestamp_token):
     """
     Get the path to the log file.
 
@@ -121,7 +121,7 @@ def get_path_log(base, timestamp_token):
     Returns:
         str: The path to the log file.
     """
-    base_filename = compose_filename(base, [timestamp_token])
+    base_filename = compose_filename(base, [dataset_name, timestamp_token])
     log_filename = to_log_filename(base_filename)
     return os.path.join(FOLDER_LOG, log_filename)
 

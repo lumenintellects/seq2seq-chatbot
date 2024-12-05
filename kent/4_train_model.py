@@ -21,16 +21,16 @@ from sklearn.model_selection import train_test_split
 os.chdir(PATH_WORKSPACE_ROOT)
 
 LOG_BASE_FILENAME = "4_train_model"
-BASE_FILENAME = 'ubuntu_dialogue_corpus_000'
+DATASET_NAME = 'ubuntu_dialogue_corpus_000'
 MODEL_NAME = 'seq2seq'
 MODEL_VERSION = '1.0'
 
-path_input_csv = get_path_input_output_pairs(BASE_FILENAME)
-path_vocab_pkl = get_path_vocab(BASE_FILENAME)
-path_input_sequences = get_path_input_sequences(BASE_FILENAME)
-path_output_sequences = get_path_output_sequences(BASE_FILENAME)
-path_input_sequences_padded_batch_pattern = get_path_input_sequences_padded_batch_pattern(BASE_FILENAME)
-path_output_sequences_padded_batch_pattern = get_path_output_sequences_padded_batch_pattern(BASE_FILENAME)
+path_input_csv = get_path_input_output_pairs(DATASET_NAME)
+path_vocab_pkl = get_path_vocab(DATASET_NAME)
+path_input_sequences = get_path_input_sequences(DATASET_NAME)
+path_output_sequences = get_path_output_sequences(DATASET_NAME)
+path_input_sequences_padded_batch_pattern = get_path_input_sequences_padded_batch_pattern(DATASET_NAME)
+path_output_sequences_padded_batch_pattern = get_path_output_sequences_padded_batch_pattern(DATASET_NAME)
 
 # Define the save path
 path_model = get_path_model(MODEL_NAME, MODEL_VERSION)
@@ -157,7 +157,7 @@ def pad_to_length(sequences, max_length, padding_value):
 if __name__ == "__main__":
 
     log_start_time = time.strftime('%Y%m%d_%H%M%S')
-    path_log = get_path_log(LOG_BASE_FILENAME, log_start_time)
+    path_log = get_path_log(LOG_BASE_FILENAME, DATASET_NAME, log_start_time)
 
     # Set up logging configuration
     logging.basicConfig(

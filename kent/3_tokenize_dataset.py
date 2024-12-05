@@ -12,7 +12,7 @@ import torch
 import pickle
 import numpy as np
 
-BASE_FILENAME = 'ubuntu_dialogue_corpus_000'
+DATASET_NAME = 'ubuntu_dialogue_corpus_000'
 LOG_BASE_FILENAME = "3_tokenize_dataset"
 
 N_PROCESS_VALUE = 10
@@ -116,7 +116,7 @@ if __name__ == "__main__":
     os.chdir(PATH_WORKSPACE_ROOT)
 
     log_start_time = time.strftime('%Y%m%d_%H%M%S')
-    path_log = get_path_log(LOG_BASE_FILENAME, log_start_time)
+    path_log = get_path_log(LOG_BASE_FILENAME, DATASET_NAME, log_start_time)
 
     # Set up logging configuration
     logging.basicConfig(
@@ -139,12 +139,12 @@ if __name__ == "__main__":
 
     # ==========================
 
-    path_input_output_pairs = get_path_input_output_pairs(BASE_FILENAME)
-    path_vocab = get_path_vocab(BASE_FILENAME)
-    path_input_sequences = get_path_input_sequences(BASE_FILENAME)
-    path_output_sequences = get_path_output_sequences(BASE_FILENAME)
-    path_input_sequences_padded_batch_pattern = get_path_input_sequences_padded_batch_pattern(BASE_FILENAME)
-    path_output_sequences_padded_batch_pattern = get_path_output_sequences_padded_batch_pattern(BASE_FILENAME)
+    path_input_output_pairs = get_path_input_output_pairs(DATASET_NAME)
+    path_vocab = get_path_vocab(DATASET_NAME)
+    path_input_sequences = get_path_input_sequences(DATASET_NAME)
+    path_output_sequences = get_path_output_sequences(DATASET_NAME)
+    path_input_sequences_padded_batch_pattern = get_path_input_sequences_padded_batch_pattern(DATASET_NAME)
+    path_output_sequences_padded_batch_pattern = get_path_output_sequences_padded_batch_pattern(DATASET_NAME)
 
     # Define the save path
     path_model = os.path.join(PATH_WORKSPACE_ROOT, "seq2seq_model.pth")
@@ -254,7 +254,7 @@ if __name__ == "__main__":
             # Examine the padded batch
             logger.info(f"Batch {i // BATCH_SIZE} shape: {padded_batch.shape}")
 
-            batch_file_path = get_path_input_sequences_padded_batch(BASE_FILENAME, i // BATCH_SIZE)
+            batch_file_path = get_path_input_sequences_padded_batch(DATASET_NAME, i // BATCH_SIZE)
             torch.save(padded_batch, batch_file_path)
             logger.info(f"Saved batch {i // BATCH_SIZE} to {batch_file_path}")
 
@@ -319,7 +319,7 @@ if __name__ == "__main__":
             # Examine the padded batch
             logger.info(f"Batch {i // BATCH_SIZE} shape: {padded_batch.shape}")
 
-            batch_file_path = get_path_output_sequences_padded_batch(BASE_FILENAME, i // BATCH_SIZE)
+            batch_file_path = get_path_output_sequences_padded_batch(DATASET_NAME, i // BATCH_SIZE)
             torch.save(padded_batch, batch_file_path)
             logger.info(f"Saved batch {i // BATCH_SIZE} to {batch_file_path}")
 

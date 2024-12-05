@@ -20,6 +20,7 @@ from nltk.translate.bleu_score import corpus_bleu
 # Set the current working directory using the constant from common.py
 os.chdir(PATH_WORKSPACE_ROOT)
 
+DATASET_NAME = 'ubuntu_dialogue_corpus_000'
 LOG_BASE_FILENAME = "5_evaluate_model"
 
 MODEL_NAME = 'seq2seq'
@@ -128,7 +129,7 @@ def idx_to_token(vocab, indices):
 if __name__ == "__main__":
 
     log_start_time = time.strftime('%Y%m%d_%H%M%S')
-    path_log = get_path_log(LOG_BASE_FILENAME, log_start_time)
+    path_log = get_path_log(LOG_BASE_FILENAME, DATASET_NAME, log_start_time)
 
     # Set up logging configuration
     logging.basicConfig(
@@ -150,13 +151,12 @@ if __name__ == "__main__":
 
     # ==========================
 
-    base_filename = 'ubuntu_dialogue_corpus_000'
-    path_input_csv = get_path_input_output_pairs(base_filename)
-    path_vocab_pkl = get_path_vocab(base_filename)
-    path_input_sequences = get_path_input_sequences(base_filename)
-    path_output_sequences = get_path_output_sequences(base_filename)
-    path_input_sequences_padded_batch_pattern = get_path_input_sequences_padded_batch_pattern(base_filename)
-    path_output_sequences_padded_batch_pattern = get_path_output_sequences_padded_batch_pattern(base_filename)
+    path_input_csv = get_path_input_output_pairs(DATASET_NAME)
+    path_vocab_pkl = get_path_vocab(DATASET_NAME)
+    path_input_sequences = get_path_input_sequences(DATASET_NAME)
+    path_output_sequences = get_path_output_sequences(DATASET_NAME)
+    path_input_sequences_padded_batch_pattern = get_path_input_sequences_padded_batch_pattern(DATASET_NAME)
+    path_output_sequences_padded_batch_pattern = get_path_output_sequences_padded_batch_pattern(DATASET_NAME)
 
     # Define the save path
     path_model = get_path_model(MODEL_NAME, MODEL_VERSION)
