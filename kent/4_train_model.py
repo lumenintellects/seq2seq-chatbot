@@ -299,10 +299,14 @@ if __name__ == "__main__":
     continue_training = True
     while continue_training:
 
+# ==========================
+
         # Create a subset of the dataset for training
         logger.info(f"Creating a subset of the dataset for training with size: {TRAINING_SUBSET_SIZE}")
         subset_indices = np.random.choice(combined_indices, size=TRAINING_SUBSET_SIZE, replace=False)
         subset_combined_sequences = [combined_sequences[i] for i in subset_indices]
+
+        logger.info("Splitting data into train, test, and val sets...")
 
         # Split data into training and temporary (validation + test)
         subset_train_data, subset_non_train_data = train_test_split(subset_combined_sequences, test_size=NON_TRAIN_DATA_PROPORTION, random_state=RANDOM_SEED)
@@ -332,6 +336,8 @@ if __name__ == "__main__":
 
         subset_test_dataset = TensorDataset(subset_test_inputs, subset_test_outputs)
         subset_test_loader = DataLoader(subset_test_dataset, batch_size=BATCH_SIZE, shuffle=False, pin_memory=True, num_workers=4)
+
+# ==========================
 
         # Epoch-wise training
         iteration_start_time = time.time()
