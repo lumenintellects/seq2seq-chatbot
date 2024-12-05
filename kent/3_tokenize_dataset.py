@@ -4,14 +4,15 @@ import time
 import logging
 import pandas as pd
 import spacy
-from common import PATH_WORKSPACE_ROOT, log_filename, csv_filename, pt_filename, pkl_filename
+from common import PATH_WORKSPACE_ROOT, get_path_log, get_path_input_output_pairs, get_path_vocab
+from common import get_path_input_sequences, get_path_output_sequences
+from common import get_path_input_sequences_padded_batch, get_path_output_sequences_padded_batch
+from common import get_path_input_sequences_padded_batch_pattern, get_path_output_sequences_padded_batch_pattern
 import torch
 import pickle
 import numpy as np
 
-BASE_FILENAME = 'ubuntu_dialogue_corpus_000_input_output_pairs'
-
-LOG_FOLDER = 'dataset'
+BASE_FILENAME = 'ubuntu_dialogue_corpus_000'
 LOG_BASE_FILENAME = "3_tokenize_dataset"
 
 N_PROCESS_VALUE = 8
@@ -131,7 +132,7 @@ if __name__ == "__main__":
     os.chdir(PATH_WORKSPACE_ROOT)
 
     log_start_time = time.strftime('%Y%m%d_%H%M%S')
-    path_log = os.path.join(LOG_FOLDER, log_filename(f"{LOG_BASE_FILENAME}_{log_start_time}"))
+    path_log = get_path_log(LOG_BASE_FILENAME, log_start_time)
 
     # Set up logging configuration
     logging.basicConfig(
@@ -154,13 +155,12 @@ if __name__ == "__main__":
 
     # ==========================
 
-    folder_dataset = 'dataset'
-    path_input_csv = os.path.join(folder_dataset, csv_filename(BASE_FILENAME))
-    path_vocab_pkl = os.path.join(folder_dataset, pkl_filename(f"{BASE_FILENAME}_vocab"))
-    path_input_sequences = os.path.join(folder_dataset, pt_filename(f"{BASE_FILENAME}_input_sequences"))
-    path_output_sequences = os.path.join(folder_dataset, pt_filename(f"{BASE_FILENAME}_output_sequences"))
-    path_input_sequences_padded_batch_pattern = os.path.join(folder_dataset, pt_filename(f"{BASE_FILENAME}_input_sequences_padded_batch_*"))
-    path_output_sequences_padded_batch_pattern = os.path.join(folder_dataset, pt_filename(f"{BASE_FILENAME}_output_sequences_padded_batch_*"))
+    path_input_output_pairs = get_path_input_output_pairs(BASE_FILENAME)
+    path_vocab = get_path_vocab(BASE_FILENAME)
+    path_input_sequences = get_path_input_sequences(BASE_FILENAME)
+    path_output_sequences = get_path_output_sequences(BASE_FILENAME)
+    path_input_sequences_padded_batch_pattern = get_path_input_sequences_padded_batch_pattern(BASE_FILENAME)
+    path_output_sequences_padded_batch_pattern = get_path_output_sequences_padded_batch_pattern(BASE_FILENAME)
 
     # Define the save path
     path_model = os.path.join(PATH_WORKSPACE_ROOT, "seq2seq_model.pth")
@@ -168,8 +168,8 @@ if __name__ == "__main__":
     # ==========================
 
     # Load the dataset
-    df = pd.read_csv(path_input_csv)
-    logger.info(f"Loaded csv into dataframe: {path_input_csv}")
+    df = pd.read_csv(path_input_output_pairs)
+    logger.info(f"Loaded csv into dataframe: {path_input_output_pairs}")
 
     # Replace NaN in 'input' and 'output' columns
     df['input'] = df['input'].fillna("")
@@ -177,9 +177,9 @@ if __name__ == "__main__":
     logger.info("NaN replaced with empty strings.")
 
     # Check for existing vocabulary
-    if os.path.exists(path_vocab_pkl):
+    if os.path.exists(path_vocab):
         logger.info("Vocabulary file found. Loading vocabulary...")
-        with open(path_vocab_pkl, "rb") as vocab_file:
+        with open(path_vocab, "rb") as vocab_file:
             vocab = pickle.load(vocab_file)
         logger.info(f"Vocabulary loaded. Size: {len(vocab)}")
     else:
@@ -206,7 +206,7 @@ if __name__ == "__main__":
         logger.info(f"Vocabulary built. Size: {len(vocab)}")
 
         # Save the vocabulary to file
-        with open(path_vocab_pkl, "wb") as vocab_file:
+        with open(path_vocab, "wb") as vocab_file:
             pickle.dump(vocab, vocab_file)
         logger.info("Vocabulary saved to file.")
 
@@ -270,8 +270,7 @@ if __name__ == "__main__":
             # Examine the padded batch
             logger.info(f"Batch {i // BATCH_SIZE} shape: {padded_batch.shape}")
 
-            batch_file_name = pt_filename(f"{BASE_FILENAME}_input_sequences_padded_batch_{i // BATCH_SIZE}")
-            batch_file_path = os.path.join(folder_dataset, batch_file_name)
+            batch_file_path = get_path_input_sequences_padded_batch(BASE_FILENAME, i // BATCH_SIZE)
             torch.save(padded_batch, batch_file_path)
             logger.info(f"Saved batch {i // BATCH_SIZE} to {batch_file_path}")
 
@@ -336,8 +335,7 @@ if __name__ == "__main__":
             # Examine the padded batch
             logger.info(f"Batch {i // BATCH_SIZE} shape: {padded_batch.shape}")
 
-            batch_file_name = pt_filename(f"{BASE_FILENAME}_output_sequences_padded_batch_{i // BATCH_SIZE}")
-            batch_file_path = os.path.join(folder_dataset, batch_file_name)
+            batch_file_path = get_path_output_sequences_padded_batch(BASE_FILENAME, i // BATCH_SIZE)
             torch.save(padded_batch, batch_file_path)
             logger.info(f"Saved batch {i // BATCH_SIZE} to {batch_file_path}")
 

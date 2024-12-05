@@ -2,9 +2,13 @@ import glob
 import os
 import time
 import spacy
-from common import PATH_WORKSPACE_ROOT, csv_filename, pt_filename, pkl_filename, get_setting_training_loop_continue, get_setting_next_subset_continue
-from common import log_filename, get_setting_analyze_sequences, get_setting_training_subset_size, get_setting_debug_mode
+from common import PATH_WORKSPACE_ROOT, get_setting_training_loop_continue, get_setting_next_subset_continue
+from common import get_setting_analyze_sequences, get_setting_training_subset_size
 from common import Encoder, Decoder, Seq2Seq
+from common import PATH_WORKSPACE_ROOT, get_path_log, get_path_input_output_pairs, get_path_vocab
+from common import get_path_input_sequences, get_path_output_sequences
+from common import get_path_input_sequences_padded_batch_pattern, get_path_output_sequences_padded_batch_pattern
+from common import get_path_model
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
@@ -16,8 +20,23 @@ from sklearn.model_selection import train_test_split
 # Set the current working directory using the constant from common.py
 os.chdir(PATH_WORKSPACE_ROOT)
 
-LOG_BASE_FILENAME = "seq2seq_training"
-WORKING_FOLDER = 'dataset'
+LOG_BASE_FILENAME = "4_train_model"
+BASE_FILENAME = 'ubuntu_dialogue_corpus_000'
+MODEL_NAME = 'seq2seq'
+MODEL_VERSION = '1.0'
+
+path_input_csv = get_path_input_output_pairs(BASE_FILENAME)
+path_vocab_pkl = get_path_vocab(BASE_FILENAME)
+path_input_sequences = get_path_input_sequences(BASE_FILENAME)
+path_output_sequences = get_path_output_sequences(BASE_FILENAME)
+path_input_sequences_padded_batch_pattern = get_path_input_sequences_padded_batch_pattern(BASE_FILENAME)
+path_output_sequences_padded_batch_pattern = get_path_output_sequences_padded_batch_pattern(BASE_FILENAME)
+
+# Define the save path
+path_model = get_path_model(MODEL_NAME, MODEL_VERSION)
+
+# ==========================
+
 
 NON_TRAIN_DATA_PROPORTION = 0.2
 RANDOM_SEED = 42
@@ -138,7 +157,7 @@ def pad_to_length(sequences, max_length, padding_value):
 if __name__ == "__main__":
 
     log_start_time = time.strftime('%Y%m%d_%H%M%S')
-    path_log = os.path.join(WORKING_FOLDER, log_filename(f"{LOG_BASE_FILENAME}_{log_start_time}"))
+    path_log = get_path_log(LOG_BASE_FILENAME, log_start_time)
 
     # Set up logging configuration
     logging.basicConfig(
@@ -160,21 +179,7 @@ if __name__ == "__main__":
 
     # Set the current working directory
     os.chdir(PATH_WORKSPACE_ROOT)
-    logger.info("Current Working Directory:", os.getcwd())
-
-    # ==========================
-
-    WORKING_FOLDER = 'dataset'
-    base_filename = 'ubuntu_dialogue_corpus_196_input_output_pairs'
-    path_input_csv = os.path.join(WORKING_FOLDER, csv_filename(base_filename))
-    path_vocab_pkl = os.path.join(WORKING_FOLDER, pkl_filename(f"{base_filename}_vocab"))
-    path_input_sequences = os.path.join(WORKING_FOLDER, pt_filename(f"{base_filename}_input_sequences"))
-    path_output_sequences = os.path.join(WORKING_FOLDER, pt_filename(f"{base_filename}_output_sequences"))
-    path_input_sequences_padded_batch_pattern = os.path.join(WORKING_FOLDER, pt_filename(f"{base_filename}_input_sequences_padded_batch_*"))
-    path_output_sequences_padded_batch_pattern = os.path.join(WORKING_FOLDER, pt_filename(f"{base_filename}_output_sequences_padded_batch_*"))
-
-    # Define the save path
-    path_model = os.path.join(PATH_WORKSPACE_ROOT, "seq2seq_model.pth")
+    logger.info(f"Current Working Directory: {os.getcwd()}")
 
     # ==========================
 
@@ -204,11 +209,27 @@ if __name__ == "__main__":
         logger.error("Serialized output sequences not found. Unable to proceed, exiting...")
         exit()
 
-    input_sequences_padded = torch.cat([torch.load(file, weights_only=True) for file in glob.glob(path_input_sequences_padded_batch_pattern)], dim=0)
-    logger.info("Loaded input sequences from files.")
+    matching_files_input = glob.glob(path_input_sequences_padded_batch_pattern)
+    if len(matching_files_input) == 0:
+        logger.error("No matching input files found. Unable to proceed, exiting...")
+        exit()
+    elif len(matching_files_input) == 1:
+        input_sequences_padded = torch.load(matching_files_input[0], weights_only=True)
+        logger.info("Loaded input sequences from file.")
+    else:
+        input_sequences_padded = torch.cat([torch.load(file, weights_only=True) for file in matching_files_input], dim=0)
+        logger.info("Loaded input sequences from files.")
 
-    output_sequences_padded = torch.cat([torch.load(file, weights_only=True) for file in glob.glob(path_output_sequences_padded_batch_pattern)], dim=0)
-    logger.info("Loaded output sequences from file.")
+    matching_files_output = glob.glob(path_output_sequences_padded_batch_pattern)
+    if len(matching_files_output) == 0:
+        logger.error("No matching output files found. Unable to proceed, exiting...")
+        exit()
+    elif len(matching_files_output) == 1:
+        output_sequences_padded = torch.load(matching_files_output[0], weights_only=True)
+        logger.info("Loaded output sequences from file.")
+    else:
+        output_sequences_padded = torch.cat([torch.load(file, weights_only=True) for file in matching_files_output], dim=0)
+        logger.info("Loaded output sequences from file.")
 
     # Analyze sequences
     if get_setting_analyze_sequences():

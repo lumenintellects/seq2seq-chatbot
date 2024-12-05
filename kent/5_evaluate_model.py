@@ -2,10 +2,13 @@ import glob
 import os
 import random
 import time
-from common import PATH_WORKSPACE_ROOT, csv_filename, pt_filename, pkl_filename
-from common import log_filename, get_setting_evaluation_subset_size, get_setting_evaluation_loop_continue
-from common import get_setting_evaluation_reload_model_in_loop
+from common import PATH_WORKSPACE_ROOT, get_path_input_output_pairs, get_setting_next_subset_continue
+from common import get_setting_evaluation_loop_continue, get_setting_training_subset_size
 from common import Encoder, Decoder, Seq2Seq
+from common import PATH_WORKSPACE_ROOT, get_path_log, get_setting_evaluation_reload_model_in_loop, get_path_vocab
+from common import get_path_input_sequences, get_path_output_sequences
+from common import get_path_input_sequences_padded_batch_pattern, get_path_output_sequences_padded_batch_pattern
+from common import get_path_model, get_setting_evaluation_subset_size
 import torch
 import torch.nn as nn
 import pickle
@@ -17,8 +20,10 @@ from nltk.translate.bleu_score import corpus_bleu
 # Set the current working directory using the constant from common.py
 os.chdir(PATH_WORKSPACE_ROOT)
 
-LOG_BASE_FILENAME = "seq2seq_model_evaluation"
-WORKING_FOLDER = 'dataset'
+LOG_BASE_FILENAME = "5_evaluate_model"
+
+MODEL_NAME = 'seq2seq'
+MODEL_VERSION = '1.0'
 
 TEST_DATA_PROPORTION = 0.2
 RANDOM_SEED = 42
@@ -118,7 +123,7 @@ def idx_to_token(vocab, indices):
 if __name__ == "__main__":
 
     log_start_time = time.strftime('%Y%m%d_%H%M%S')
-    path_log = os.path.join(WORKING_FOLDER, log_filename(f"{LOG_BASE_FILENAME}_{log_start_time}"))
+    path_log = get_path_log(LOG_BASE_FILENAME, log_start_time)
 
     # Set up logging configuration
     logging.basicConfig(
@@ -140,17 +145,16 @@ if __name__ == "__main__":
 
     # ==========================
 
-    WORKING_FOLDER = 'dataset'
-    base_filename = 'ubuntu_dialogue_corpus_196_input_output_pairs'
-    path_input_csv = os.path.join(WORKING_FOLDER, csv_filename(base_filename))
-    path_vocab_pkl = os.path.join(WORKING_FOLDER, pkl_filename(f"{base_filename}_vocab"))
-    path_input_sequences = os.path.join(WORKING_FOLDER, pt_filename(f"{base_filename}_input_sequences"))
-    path_output_sequences = os.path.join(WORKING_FOLDER, pt_filename(f"{base_filename}_output_sequences"))
-    path_input_sequences_padded_batch_pattern = os.path.join(WORKING_FOLDER, pt_filename(f"{base_filename}_input_sequences_padded_batch_*"))
-    path_output_sequences_padded_batch_pattern = os.path.join(WORKING_FOLDER, pt_filename(f"{base_filename}_output_sequences_padded_batch_*"))
+    base_filename = 'ubuntu_dialogue_corpus_000'
+    path_input_csv = get_path_input_output_pairs(base_filename)
+    path_vocab_pkl = get_path_vocab(base_filename)
+    path_input_sequences = get_path_input_sequences(base_filename)
+    path_output_sequences = get_path_output_sequences(base_filename)
+    path_input_sequences_padded_batch_pattern = get_path_input_sequences_padded_batch_pattern(base_filename)
+    path_output_sequences_padded_batch_pattern = get_path_output_sequences_padded_batch_pattern(base_filename)
 
     # Define the save path
-    path_model = os.path.join(PATH_WORKSPACE_ROOT, "seq2seq_model.pth")
+    path_model = get_path_model(MODEL_NAME, MODEL_VERSION)
 
     # ==========================
 

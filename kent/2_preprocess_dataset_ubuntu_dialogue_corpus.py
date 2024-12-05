@@ -3,7 +3,8 @@ import time
 import logging
 import pandas as pd
 import numpy as np
-from common import PATH_WORKSPACE_ROOT, log_filename, clean_text, csv_filename
+from common import PATH_WORKSPACE_ROOT, get_path_log, get_path_source_csv, get_path_input_output_pairs
+from common import to_log_filename, clean_text
 from concurrent.futures import ProcessPoolExecutor
 
 # Set the current working directory using the constant from common.py
@@ -16,10 +17,9 @@ LENGTH_PERCENTILE = 95  # Percentile for filtering sequence lengths
 
 # ==========================
 
-folder_dataset = 'dataset'
 base_filename = 'ubuntu_dialogue_corpus_000'
-path_input_csv = os.path.join(folder_dataset, csv_filename(base_filename))
-path_output_csv = os.path.join(folder_dataset, csv_filename(base_filename + '_input_output_pairs'))
+path_input_csv = get_path_source_csv(base_filename)
+path_output_csv = get_path_input_output_pairs(base_filename)
 
 # ==========================
 
@@ -127,7 +127,7 @@ def process_chunk(args):
 if __name__ == "__main__":
 
     log_start_time = time.strftime('%Y%m%d_%H%M%S')
-    path_log = os.path.join(LOG_FOLDER, log_filename(f"{LOG_BASE_FILENAME}_{log_start_time}"))
+    path_log = get_path_log(LOG_BASE_FILENAME, log_start_time)
 
     # Set up logging configuration
     logging.basicConfig(

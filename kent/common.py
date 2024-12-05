@@ -11,20 +11,20 @@ EXTENSION_PT = '.pt'
 EXTENSION_PKL = '.pkl'
 EXTENSION_JSON = '.json'
 EXTENSION_LOG = '.log'
-EXTENSION_PTH = '.pth'
 
 MODE_READONLY = 'r'
 
-BASE_FILENAME_SETTINGS = 'settings' # Set the base filename for the settings JSON file here
-BASE_FILENAME_MODEL = 'seq2seq_model'
+BASE_FILENAME_SETTINGS = 'settings'
 
-# Define the settings keys inside the settings JSON file
 SETTING_ENABLE_LOGGING = 'enableLogging'
 SETTING_TRAINING_LOOP_CONTINUE = 'trainingLoopContinue'
 SETTING_NEXT_SUBSET_CONTINUE = 'nextSubsetContinue'
 SETTING_ANALYZE_SEQUENCES = 'analyzeSequences'
 SETTING_DEBUG_MODE = 'debugMode'
 SETTING_TRAINING_SUBSET_SIZE = 'trainingSubsetSize'
+SETTING_EVALUATION_SUBSET_SIZE = 'evaluationSubsetSize'
+SETTING_EVALUATION_LOOP_CONTINUE = 'evaluationLoopContinue'
+SETTING_EVALUATION_RELOAD_MODEL_IN_LOOP = 'evaluationReloadModelInLoop'
 
 # Define the Encoder
 class Encoder(nn.Module):
@@ -82,7 +82,7 @@ def get_setting(setting_name):
         str: The value of the setting.
     """
     filename_settings = json_filename(BASE_FILENAME_SETTINGS)
-    relative_path_settings = os.path.join(filename_settings)
+    relative_path_settings = os.path.join(FOLDER_DATASET, filename_settings)
     path_settings = os.path.join(PATH_WORKSPACE_ROOT, relative_path_settings)
 
     # Load the settings JSON file
@@ -98,6 +98,33 @@ def get_setting_training_subset_size():
         int: The value of the setting 'trainingSubsetSize'.
     """
     return get_setting(SETTING_TRAINING_SUBSET_SIZE)
+
+def get_setting_evaluation_subset_size():
+    """
+    Get the value of the setting 'evaluationSubsetSize' from the settings file.
+
+    Returns:
+        int: The value of the setting 'evaluationSubsetSize'.
+    """
+    return get_setting(SETTING_EVALUATION_SUBSET_SIZE)
+
+def get_setting_evaluation_loop_continue():
+    """
+    Get the value of the setting 'evaluationLoopContinue' from the settings file.
+
+    Returns:
+        bool: The value of the setting 'evaluationLoopContinue'.
+    """
+    return get_setting(SETTING_EVALUATION_LOOP_CONTINUE)
+
+def get_setting_evaluation_reload_model_in_loop():
+    """
+    Get the value of the setting 'evaluationReloadModelInLoop' from the settings file.
+
+    Returns:
+        bool: The value of the setting 'evaluationReloadModelInLoop'.
+    """
+    return get_setting(SETTING_EVALUATION_RELOAD_MODEL_IN_LOOP)
 
 def get_setting_debug_mode():
     """
@@ -257,15 +284,3 @@ def log_filename(name):
         str: The full path to the log file.
     """
     return f"{name}{EXTENSION_LOG}"
-
-def pth_filename(name):
-    """
-    Create a PTH filename with the given name.
-
-    Parameters:
-        name (str): The name of the PTH file.
-
-    Returns:
-        str: The full path to the PTH file.
-    """
-    return f"{name}{EXTENSION_PTH}"

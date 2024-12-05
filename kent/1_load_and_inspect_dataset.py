@@ -3,16 +3,15 @@ import time
 import logging
 import pandas as pd
 import numpy as np
-from common import log_filename
-from common import PATH_WORKSPACE_ROOT, csv_filename  # Import from common.py
+from common import get_path_log
+from common import PATH_WORKSPACE_ROOT, get_path_source_csv, get_path_outliers  # Import from common.py
 
 # Set the current working directory using the constant from common.py
 os.chdir(PATH_WORKSPACE_ROOT)
 LOG_BASE_FILENAME = "1_load_and_inspect_dataset"
-LOG_FOLDER = 'dataset'
 
 log_start_time = time.strftime('%Y%m%d_%H%M%S')
-path_log = os.path.join(LOG_FOLDER, log_filename(f"{LOG_BASE_FILENAME}_{log_start_time}"))
+path_log = get_path_log(LOG_BASE_FILENAME, log_start_time)
 
 # Set up logging configuration
 logging.basicConfig(
@@ -28,9 +27,8 @@ logger = logging.getLogger(__name__)
 
 # ==========================
 
-folder_dataset = 'dataset'
 base_filename = 'ubuntu_dialogue_corpus_000'
-path_input_csv = os.path.join(folder_dataset, csv_filename(base_filename))
+path_input_csv = get_path_source_csv(base_filename)
 
 # ==========================
 
@@ -81,6 +79,6 @@ logger.info(outliers[['dialogueID', 'from', 'text', 'text_length']].head())
 # ==========================
 
 # Save outlier entries to a separate file (optional)
-path_outliers_csv = os.path.join(folder_dataset, csv_filename(base_filename + '_text_outliers'))
+path_outliers_csv = get_path_outliers(base_filename)
 outliers.to_csv(path_outliers_csv, index=False)
 logger.info(f"\nOutliers saved to: {path_outliers_csv}")
