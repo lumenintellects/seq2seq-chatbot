@@ -48,7 +48,12 @@ def load_latest_model_state(model, path_model, logger):
     """
     if os.path.exists(path_model):
         logger.info("Loading model state...")
-        model.load_state_dict(torch.load(path_model, map_location=torch.device('cpu'), weights_only=True))
+        # place in try-catch block to handle exceptions
+        try:
+            model.load_state_dict(torch.load(path_model, map_location=torch.device('cpu'), weights_only=True))
+        except Exception as e:
+            logger.error(f"Error loading model state: {e}")
+            return False
         logger.info("Model state loaded.")
         return True
     else:
