@@ -236,7 +236,7 @@ if __name__ == "__main__":
     if len(glob.glob(path_input_sequences_padded_batch_pattern)) > 0:
         logger.info("Serialized padded input sequences found.")
     else:
-        input_sequences = torch.load(path_input_sequences)
+        input_sequences = torch.load(path_input_sequences, weights_only=True)
 
         input_lengths = [len(seq) for seq in input_sequences]
         input_max_length = max(input_lengths)
