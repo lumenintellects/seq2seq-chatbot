@@ -4,7 +4,7 @@ import logging
 import pandas as pd
 import numpy as np
 from common import PATH_WORKSPACE_ROOT, get_path_log, get_path_source_csv, get_path_input_output_pairs
-from common import to_log_filename, clean_text
+from common import clean_text
 from concurrent.futures import ProcessPoolExecutor
 
 # Set the current working directory using the constant from common.py
