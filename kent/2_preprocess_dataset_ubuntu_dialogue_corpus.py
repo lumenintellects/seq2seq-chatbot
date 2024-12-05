@@ -1,19 +1,23 @@
 import os
+import time
+import logging
 import pandas as pd
 import numpy as np
-from common import PATH_WORKSPACE_ROOT, clean_text, csv_filename
+from common import PATH_WORKSPACE_ROOT, log_filename, clean_text, csv_filename
 from concurrent.futures import ProcessPoolExecutor
+
+# Set the current working directory using the constant from common.py
+os.chdir(PATH_WORKSPACE_ROOT)
+LOG_BASE_FILENAME = "2_preprocess_dataset_ubuntu_dialogue_corpus"
+LOG_FOLDER = 'dataset'
 
 N_CHUNKS = 8
 LENGTH_PERCENTILE = 95  # Percentile for filtering sequence lengths
 
-# Set the current working directory using the constant from common.py
-os.chdir(PATH_WORKSPACE_ROOT)
-
 # ==========================
 
 folder_dataset = 'dataset'
-base_filename = 'ubuntu_dialogue_corpus_196'
+base_filename = 'ubuntu_dialogue_corpus_000'
 path_input_csv = os.path.join(folder_dataset, csv_filename(base_filename))
 path_output_csv = os.path.join(folder_dataset, csv_filename(base_filename + '_input_output_pairs'))
 
@@ -121,7 +125,23 @@ def process_chunk(args):
 # ==========================
 
 if __name__ == "__main__":
-    print("Running main script...")
+
+    log_start_time = time.strftime('%Y%m%d_%H%M%S')
+    path_log = os.path.join(LOG_FOLDER, log_filename(f"{LOG_BASE_FILENAME}_{log_start_time}"))
+
+    # Set up logging configuration
+    logging.basicConfig(
+        level=logging.INFO,  # Set the minimum log level (DEBUG, INFO, WARNING, etc.)
+        format="%(asctime)s - %(levelname)s - %(message)s",  # Log format with timestamps
+        handlers=[
+            logging.FileHandler(path_log),  # Log to a file
+            logging.StreamHandler()  # Log to the console
+        ]
+    )
+
+    logger = logging.getLogger(__name__)
+
+    logger.info("Running main script...")
 
     # Load the dataset
     df = pd.read_csv(path_input_csv)
@@ -133,22 +153,22 @@ if __name__ == "__main__":
     df = df[df['text'].notnull()]
 
     row_count = df.shape[0]
-    print(f"Dataset Loaded: {row_count} rows")
+    logger.info(f"Dataset Loaded: {row_count} rows")
 
     # Compute maximum allowed length based on 95th percentile
     all_texts = pd.concat([df['text']]).str.split().map(len)
     max_length = int(np.percentile(all_texts, LENGTH_PERCENTILE))
-    print(f"{LENGTH_PERCENTILE}th Percentile Length: {max_length}")
+    logger.info(f"{LENGTH_PERCENTILE}th Percentile Length: {max_length}")
 
     # Split the DataFrame into chunks
     df_chunks = np.array_split(df, N_CHUNKS)
-    print(f"Dataset Split into {N_CHUNKS} Chunks")
+    logger.info(f"Dataset Split into {N_CHUNKS} Chunks")
 
     # Use ProcessPoolExecutor for parallel processing
-    print("Processing chunks in parallel...")
+    logger.info("Processing chunks in parallel...")
     start_time = pd.Timestamp.now()
     start_time_str = start_time.strftime("%Y-%m-%d %H:%M:%S")
-    print(f"Start Time: {start_time_str}")
+    logger.info(f"Start Time: {start_time_str}")
 
     with ProcessPoolExecutor() as executor:
         chunk_results = list(executor.map(process_chunk, [(chunk, max_length) for chunk in df_chunks]))
@@ -159,35 +179,35 @@ if __name__ == "__main__":
     end_time = pd.Timestamp.now()
     duration_in_seconds = (end_time - start_time).total_seconds()
     duration_in_hour_minute_seconds = pd.to_datetime(duration_in_seconds, unit='s').strftime('%H:%M:%S')
-    print(f"Input-Output Pairs Generated in: {duration_in_hour_minute_seconds}")
+    logger.info(f"Input-Output Pairs Generated in: {duration_in_hour_minute_seconds}")
 
     # Get the stats on the generated pairs
     filtered_pairs_count = pairs_df.shape[0]
-    print(f"Input-Output Pairs Generated: {filtered_pairs_count}")
+    logger.info(f"Input-Output Pairs Generated: {filtered_pairs_count}")
 
     max_input_length = pairs_df['input'].str.split().map(len).max()
-    print(f"Max Input Length: {max_input_length}")
+    logger.info(f"Max Input Length: {max_input_length}")
 
     mean_input_length = pairs_df['input'].str.split().map(len).mean()
-    print(f"Mean Input Length: {mean_input_length:.2f}")
+    logger.info(f"Mean Input Length: {mean_input_length:.2f}")
 
     median_input_length = pairs_df['input'].str.split().map(len).median()
-    print(f"Median Input Length: {median_input_length}")
+    logger.info(f"Median Input Length: {median_input_length}")
 
     percentile_95_input_length = np.percentile(pairs_df['input'].str.split().map(len), 95)
-    print(f"95th Percentile Input Length: {percentile_95_input_length}")
+    logger.info(f"95th Percentile Input Length: {percentile_95_input_length}")
 
     max_output_length = pairs_df['output'].str.split().map(len).max()
-    print(f"Max Output Length: {max_output_length}")
+    logger.info(f"Max Output Length: {max_output_length}")
 
     mean_output_length = pairs_df['output'].str.split().map(len).mean()
-    print(f"Mean Output Length: {mean_output_length:.2f}")
+    logger.info(f"Mean Output Length: {mean_output_length:.2f}")
 
     median_output_length = pairs_df['output'].str.split().map(len).median()
-    print(f"Median Output Length: {median_output_length}")
+    logger.info(f"Median Output Length: {median_output_length}")
 
     percentile_95_output_length = np.percentile(pairs_df['output'].str.split().map(len), 95)
-    print(f"95th Percentile Output Length: {percentile_95_output_length}")
+    logger.info(f"95th Percentile Output Length: {percentile_95_output_length}")
 
     max_input_output_length = max(percentile_95_input_length, percentile_95_output_length)
     # filter out pairs with lengths greater than the 95th percentile
@@ -200,8 +220,8 @@ if __name__ == "__main__":
     filtered_pairs_df.to_csv(path_output_csv, index=False)
 
     filtered_pairs_count = filtered_pairs_df.shape[0]
-    print(f"{filtered_pairs_count} Input-Output Pairs Saved to {path_output_csv}")
+    logger.info(f"{filtered_pairs_count} Input-Output Pairs Saved to {path_output_csv}")
 
     # Example preview
-    print("Input-Output Pairs Example:")
-    print(pairs_df.head())
+    logger.info("Input-Output Pairs Example:")
+    logger.info(pairs_df.head())
