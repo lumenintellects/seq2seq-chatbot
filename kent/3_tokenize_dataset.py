@@ -40,17 +40,6 @@ def spacy_tokenizer_pipe(texts, nlp, n_process=4):
         tokenized_texts.append([token.text.lower() for token in doc if not token.is_space])
     return tokenized_texts
 
-# Tokenizer using spaCy
-def spacy_tokenizer(text):
-    return [token.text.lower() for token in nlp(text) if not token.is_space]
-
-# Tokenize the input and output texts using spaCy
-def yield_tokens_spacy(texts):
-    for text in texts:
-        if not isinstance(text, str):
-            raise ValueError(f"Text must be a string. Got: {text}")
-        yield spacy_tokenizer(text)
-
 # Build vocabulary from spaCy tokens
 def build_vocab(tokens_iterable, specials=["<unk>", "<pad>", "<bos>", "<eos>"]):
     vocab = {"<unk>": 0, "<pad>": 1, "<bos>": 2, "<eos>": 3}
@@ -78,14 +67,9 @@ def process_text_spacy_pipe(texts, vocab, nlp, n_process=4):
     logger.info(f"Processing {len(texts)} texts using {n_process} processes...")
     tokenized_sequences = []
     for doc in nlp.pipe(texts, n_process=n_process):
-        tokens = ["<bos>"] + [token.text.lower() for token in doc if not token.is_space] + ["<eos>"]
+        tokens = ["<bos>"] + [token.text for token in doc if not token.is_space] + ["<eos>"]
         tokenized_sequences.append([vocab.get(token, vocab["<unk>"]) for token in tokens])
     return tokenized_sequences
-
-# Process text into sequences of indices
-def process_text_spacy(text, vocab):
-    tokens = ["<bos>"] + spacy_tokenizer(text) + ["<eos>"]
-    return [vocab.get(token, vocab["<unk>"]) for token in tokens]
 
 def analyze_sequences(sequences):
     sequence_lengths = [len(seq) for seq in sequences]
