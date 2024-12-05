@@ -15,7 +15,7 @@ import numpy as np
 BASE_FILENAME = 'ubuntu_dialogue_corpus_000'
 LOG_BASE_FILENAME = "3_tokenize_dataset"
 
-N_PROCESS_VALUE = 8
+N_PROCESS_VALUE = 10
 BATCH_SIZE = 500000
 TRAINING_SUBSET_SIZE = 200
 SETTING_ANALYZE_SEQUENCES = False
