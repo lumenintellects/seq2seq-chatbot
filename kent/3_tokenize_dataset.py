@@ -37,7 +37,7 @@ def spacy_tokenizer_pipe(texts, nlp, n_process=4):
     logger.info(f"Tokenizing {len(texts)} texts using {n_process} processes...")
     tokenized_texts = []
     for doc in nlp.pipe(texts, n_process=n_process):
-        tokenized_texts.append([token.text.lower() for token in doc if not token.is_space])
+        tokenized_texts.append([token.text for token in doc if not token.is_space])
     return tokenized_texts
 
 # Build vocabulary from spaCy tokens
