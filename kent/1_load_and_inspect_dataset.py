@@ -1,10 +1,17 @@
 import os
+import time
 import pandas as pd
 import numpy as np
+from common import log_filename
 from common import PATH_WORKSPACE_ROOT, csv_filename  # Import from common.py
 
 # Set the current working directory using the constant from common.py
 os.chdir(PATH_WORKSPACE_ROOT)
+LOG_BASE_FILENAME = "1_load_and_inspect_dataset"
+LOG_FOLDER = 'dataset'
+
+log_start_time = time.strftime('%Y%m%d_%H%M%S')
+path_log = os.path.join(LOG_FOLDER, log_filename(f"{LOG_BASE_FILENAME}_{log_start_time}"))
 
 # ==========================
 
