@@ -1,8 +1,10 @@
 import glob
 import os
+import random
 import time
 from common import PATH_WORKSPACE_ROOT, csv_filename, pt_filename, pkl_filename
-from common import log_filename, get_setting_training_subset_size
+from common import log_filename, get_setting_evaluation_subset_size, get_setting_evaluation_loop_continue
+from common import get_setting_evaluation_reload_model_in_loop
 from common import Encoder, Decoder, Seq2Seq
 import torch
 import torch.nn as nn
@@ -18,18 +20,35 @@ os.chdir(PATH_WORKSPACE_ROOT)
 LOG_BASE_FILENAME = "seq2seq_model_evaluation"
 WORKING_FOLDER = 'dataset'
 
-NON_TRAIN_DATA_PROPORTION = 0.2
+TEST_DATA_PROPORTION = 0.2
 RANDOM_SEED = 42
 
-PATIENCE_LEVEL = 5 # Number of epochs to wait for improvement before early stopping
-TORCH_THREAD_COUNT = 10
-
-N_PROCESS_VALUE = 8
-BATCH_SIZE = 500000
-TRAINING_SUBSET_SIZE = get_setting_training_subset_size()
-LOSS_THRESHOLD = 1.0
+SUBSET_SIZE = get_setting_evaluation_subset_size()  # Number of sequences in each subset
+TEST_SIZE = 0.2  # Proportion of the subset to use for testing
+BATCH_SIZE = 64  # Adjust as needed
 
 # ==========================
+
+def load_latest_model_state(model, path_model, logger):
+    """
+    Load the latest saved model state if available.
+
+    Args:
+        model: The model instance to load the state into.
+        path_model: Path to the saved model state.
+        logger: Logger instance for logging status messages.
+
+    Returns:
+        bool: True if the model state was loaded successfully, False otherwise.
+    """
+    if os.path.exists(path_model):
+        logger.info("Loading model state...")
+        model.load_state_dict(torch.load(path_model, map_location=torch.device('cpu'), weights_only=True))
+        logger.info("Model state loaded.")
+        return True
+    else:
+        logger.error("Trained model state not found.")
+        return False
 
 def evaluate_model(model, dataloader, criterion, vocab, device):
     """
@@ -117,7 +136,7 @@ if __name__ == "__main__":
 
     # Set the current working directory
     os.chdir(PATH_WORKSPACE_ROOT)
-    logger.info("Current Working Directory:", os.getcwd())
+    logger.info(f"Current Working Directory: {os.getcwd()}")
 
     # ==========================
 
@@ -167,6 +186,9 @@ if __name__ == "__main__":
     output_sequences_padded = torch.cat([torch.load(file, weights_only=True) for file in glob.glob(path_output_sequences_padded_batch_pattern)], dim=0)
     logger.info("Loaded output sequences from file.")
 
+    # Combine input and output sequences into a single list of pairs
+    combined_sequences = list(zip(input_sequences_padded, output_sequences_padded))
+
     # ==========================
     # Instantiate Seq2Seq Model
 
@@ -199,34 +221,59 @@ if __name__ == "__main__":
     criterion = nn.CrossEntropyLoss(ignore_index=padding_value)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
-    # If model state exists, load it
-    if os.path.exists(path_model):
-        logger.info("Loading model state...")
-        model.load_state_dict(torch.load(path_model, weights_only=True))
-        logger.info("Model state loaded.")
-    else:
-        logger.error("Trained model state not found. Exiting...")
+    # Load the latest model state
+    if not load_latest_model_state(model, path_model, logger):
+        logger.error("Unable to load model state. Exiting...")
         exit()
 
 # ==========================
 
-    # Combine input and output sequences into a single list of pairs
-    combined_sequences = list(zip(input_sequences_padded, output_sequences_padded))
+    # Initialize accumulators for overall scores
+    cumulative_loss = 0
+    cumulative_bleu = 0
 
-    # Split data into test set only
-    _, test_data = train_test_split(combined_sequences, test_size=NON_TRAIN_DATA_PROPORTION, random_state=RANDOM_SEED)
+    # Loop through the subsets
+    sample_subset_counter = 0
+    while get_setting_evaluation_loop_continue():
 
-    # Unpack test set
-    test_inputs, test_outputs = zip(*test_data)
-    test_inputs = torch.stack(test_inputs)
-    test_outputs = torch.stack(test_outputs)
+        sample_subset_counter += 1
 
-    # Create test DataLoader
-    test_dataset = TensorDataset(test_inputs, test_outputs)
-    test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, pin_memory=True, num_workers=4)
+        # Step 1: Randomly sample a subset of sequences
+        subset_combined_sequences = random.sample(combined_sequences, SUBSET_SIZE)
+        
+        # Step 2: Split the subset into train and test
+        _, subset_test_data = train_test_split(subset_combined_sequences, test_size=TEST_SIZE, random_state=RANDOM_SEED)
+        
+        # Step 3: Unpack test data
+        subset_test_inputs, subset_test_outputs = zip(*subset_test_data)
+        subset_test_inputs = torch.stack(subset_test_inputs)
+        subset_test_outputs = torch.stack(subset_test_outputs)
+        
+        # Create test DataLoader
+        subset_test_dataset = TensorDataset(subset_test_inputs, subset_test_outputs)
+        subset_test_loader = DataLoader(subset_test_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
-    # Evaluate the model
-    logger.info("Evaluating the model on the test set...")
-    test_loss, bleu_score = evaluate_model(model, test_loader, criterion, vocab, device)
-    logger.info(f"Test Loss: {test_loss:.3f}")
-    logger.info(f"BLEU Score: {bleu_score:.3f}")
+        if get_setting_evaluation_reload_model_in_loop():
+            # Reload the model state
+            if not load_latest_model_state(model, path_model, logger):
+                logger.warning("Unable to load model state. Continuing with the current model state...")
+
+        # Step 4: Evaluate the model on the subset
+        logger.info(f"Evaluating subset {sample_subset_counter}...")
+        subset_loss, subset_bleu = evaluate_model(model, subset_test_loader, criterion, vocab, device)
+        
+        # Accumulate the results
+        cumulative_loss += subset_loss
+        cumulative_bleu += subset_bleu
+        
+        logger.info(f"Subset {sample_subset_counter} - Loss: {subset_loss:.3f}, BLEU: {subset_bleu:.3f}")
+
+    if sample_subset_counter == 0:
+        logger.warning("No subsets evaluated. Exiting...")
+        exit()
+
+    # Step 5: Compute overall scores
+    average_loss = cumulative_loss / sample_subset_counter
+    average_bleu = cumulative_bleu / sample_subset_counter
+
+    logger.info(f"Overall Evaluation - Average Loss: {average_loss:.3f}, Average BLEU: {average_bleu:.3f}")
