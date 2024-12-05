@@ -9,7 +9,7 @@ os.chdir(PATH_WORKSPACE_ROOT)
 # ==========================
 
 folder_dataset = 'dataset'
-base_filename = 'ubuntu_dialogue_corpus_196'
+base_filename = 'ubuntu_dialogue_corpus_000'
 path_input_csv = os.path.join(folder_dataset, csv_filename(base_filename))
 
 # ==========================
