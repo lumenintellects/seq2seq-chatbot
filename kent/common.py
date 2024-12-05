@@ -3,7 +3,7 @@ import os
 import pandas as pd
 import torch.nn as nn
 
-PATH_WORKSPACE_ROOT = r'D:\git\github\seq2seq-chatbot\kent' # Set the workspace root path here
+PATH_WORKSPACE_ROOT = r'.' # Set the workspace root path here
 FOLDER_DATASET = 'dataset' # Set the name of the folder containing the datasets here
 
 EXTENSION_CSV = '.csv'
