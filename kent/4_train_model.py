@@ -44,7 +44,6 @@ RANDOM_SEED = 42
 PATIENCE_LEVEL = 5 # Number of epochs to wait for improvement before early stopping
 TORCH_THREAD_COUNT = 10
 
-N_PROCESS_VALUE = 8
 BATCH_SIZE = 500000
 TRAINING_SUBSET_SIZE = get_setting_training_subset_size()
 LOSS_THRESHOLD = 1.0
