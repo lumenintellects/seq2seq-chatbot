@@ -189,7 +189,7 @@ if __name__ == "__main__":
         logger.info("Tokenizing input and output texts...")
         time_input_sequences_start = time.time()
         time_input_sequences_start_hh_mm_ss = time.strftime('%H:%M:%S', time.localtime(time_input_sequences_start))
-        logger.info("The time is:", time_input_sequences_start_hh_mm_ss)
+        logger.info(f"The time is: {time_input_sequences_start_hh_mm_ss}")
         texts_combined = df['input'].tolist() + df['output'].tolist()
         combined_tokens = spacy_tokenizer_pipe(texts_combined, nlp, n_process=N_PROCESS_VALUE)
         time_input_sequences_end = time.time()
@@ -199,7 +199,7 @@ if __name__ == "__main__":
         logger.info("Building vocabulary...")
         time_build_vocab_start = time.time()
         time_build_vocab_start_hh_mm_ss = time.strftime('%H:%M:%S', time.localtime(time_build_vocab_start))
-        logger.info("The time is:", time_build_vocab_start_hh_mm_ss)
+        logger.info(f"The time is: {time_build_vocab_start_hh_mm_ss}")
         vocab = build_vocab(combined_tokens)
         time_build_vocab_end = time.time()
         logger.info(f"Vocabulary built in {time_build_vocab_end - time_build_vocab_start} seconds.")
@@ -226,7 +226,7 @@ if __name__ == "__main__":
         # Process input sequences in parallel
         time_input_sequences_start = time.time()
         time_input_sequences_start_hh_mm_ss = time.strftime('%H:%M:%S', time.localtime(time_input_sequences_start))
-        logger.info("The time is:", time_input_sequences_start_hh_mm_ss)
+        logger.info(f"The time is: {time_input_sequences_start_hh_mm_ss}")
         input_sequences = process_text_spacy_pipe(input_texts, vocab, nlp, n_process=N_PROCESS_VALUE)
         torch.save(input_sequences, path_input_sequences)
         time_input_sequences_end = time.time()
@@ -240,16 +240,16 @@ if __name__ == "__main__":
 
         input_lengths = [len(seq) for seq in input_sequences]
         input_max_length = max(input_lengths)
-        logger.info("Max input length:", input_max_length)
+        logger.info(f"Max input length: {input_max_length}")
 
         input_mean_length = sum(input_lengths) / len(input_lengths)
-        logger.info("Mean input length:", input_mean_length)
+        logger.info(f"Mean input length: {input_mean_length}")
 
         input_median_length = sorted(input_lengths)[len(input_lengths) // 2]
-        logger.info("Median input length:", input_median_length)
+        logger.info(f"Median input length: {input_median_length}")
 
         input_percentile_95 = np.percentile(input_lengths, 95)
-        logger.info("95th percentile input length:", input_percentile_95)
+        logger.info(f"95th percentile input length: {input_percentile_95}")
 
         # truncate input sequences longer than the 95th percentile
         logger.info("Truncating input sequences longer than the 95th percentile...")
@@ -259,7 +259,7 @@ if __name__ == "__main__":
         logger.info("Serialized padded input sequences not found, padding input sequences...")
         time_pad_input_sequences_start = time.time()
         time_pad_input_sequences_start_hh_mm_ss = time.strftime('%H:%M:%S', time.localtime(time_pad_input_sequences_start))
-        logger.info("The time is:", time_pad_input_sequences_start_hh_mm_ss)
+        logger.info(f"The time is: {time_pad_input_sequences_start_hh_mm_ss}")
 
         # Process sequences in batches to avoid memory issues
         for i in range(0, len(input_sequences), BATCH_SIZE):
@@ -268,7 +268,7 @@ if __name__ == "__main__":
             padded_batch = pad_to_length(batch, input_max_length, padding_value)  # Use explicit padding
 
             # Examine the padded batch
-            logger.info(f"Batch {i // BATCH_SIZE} shape:", padded_batch.shape)
+            logger.info(f"Batch {i // BATCH_SIZE} shape: {padded_batch.shape}")
 
             batch_file_name = pt_filename(f"{BASE_FILENAME}_input_sequences_padded_batch_{i // BATCH_SIZE}")
             batch_file_path = os.path.join(folder_dataset, batch_file_name)
@@ -292,7 +292,7 @@ if __name__ == "__main__":
         # Process output sequences in parallel
         time_output_sequences_start = time.time()
         time_output_sequences_start_hh_mm_ss = time.strftime('%H:%M:%S', time.localtime(time_output_sequences_start))
-        logger.info("The time is:", time_output_sequences_start_hh_mm_ss)
+        logger.info(f"The time is: {time_output_sequences_start_hh_mm_ss}")
         output_sequences = process_text_spacy_pipe(output_texts, vocab, nlp, n_process=N_PROCESS_VALUE)
         torch.save(output_sequences, path_output_sequences)
         time_output_sequences_end = time.time()
@@ -306,16 +306,16 @@ if __name__ == "__main__":
 
         output_lengths = [len(seq) for seq in output_sequences]
         output_max_length = max(output_lengths)
-        logger.info("Max output length:", output_max_length)
+        logger.info(f"Max output length: output_max_length")
 
         output_mean_length = sum(output_lengths) / len(output_lengths)
-        logger.info("Mean output length:", output_mean_length)
+        logger.info(f"Mean output length: {output_mean_length}")
 
         output_median_length = sorted(output_lengths)[len(output_lengths) // 2]
-        logger.info("Median output length:", output_median_length)
+        logger.info(f"Median output length: {output_median_length}")
 
         output_percentile_95 = np.percentile(output_lengths, 95)
-        logger.info("95th percentile input length:", output_percentile_95)
+        logger.info(f"95th percentile output length: {output_percentile_95}")
 
         # truncate output sequences longer than the 95th percentile
         logger.info("Truncating output sequences longer than the 95th percentile...")
@@ -325,7 +325,7 @@ if __name__ == "__main__":
         logger.info("Serialized padded output sequences not found, padding output sequences...")
         time_pad_output_sequences_start = time.time()
         time_pad_output_sequences_start_hh_mm_ss = time.strftime('%H:%M:%S', time.localtime(time_pad_output_sequences_start))
-        logger.info("The time is:", time_pad_output_sequences_start_hh_mm_ss)
+        logger.info(f"The time is: {time_pad_output_sequences_start_hh_mm_ss}")
 
         # Process sequences in batches to avoid memory issues
         for i in range(0, len(output_sequences), BATCH_SIZE):
@@ -334,7 +334,7 @@ if __name__ == "__main__":
             padded_batch = pad_to_length(batch, output_max_length, padding_value)  # Use explicit padding
 
             # Examine the padded batch
-            logger.info(f"Batch {i // BATCH_SIZE} shape:", padded_batch.shape)
+            logger.info(f"Batch {i // BATCH_SIZE} shape: {padded_batch.shape}")
 
             batch_file_name = pt_filename(f"{BASE_FILENAME}_output_sequences_padded_batch_{i // BATCH_SIZE}")
             batch_file_path = os.path.join(folder_dataset, batch_file_name)
@@ -358,5 +358,5 @@ if __name__ == "__main__":
         analyze_sequences(input_sequences_padded)
         analyze_sequences(output_sequences_padded)
 
-        logger.info("Input shape:", input_sequences_padded.shape)
-        logger.info("Output shape:", output_sequences_padded.shape)
+        logger.info(f"Input shape: {input_sequences_padded.shape}")
+        logger.info(f"Output shape: {output_sequences_padded.shape}")
