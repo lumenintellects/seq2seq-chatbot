@@ -1,12 +1,8 @@
 import os
 import pandas as pd
 import numpy as np
-from common import PATH_WORKSPACE_ROOT, FOLDER_DATASET, clean_text, csv_filename
+from common import PATH_WORKSPACE_ROOT, clean_text, csv_filename
 from concurrent.futures import ProcessPoolExecutor
-
-# ==========================
-
-# NOTE: THIS PRE-PROCESSING SCRIPT CONTAINS TRANSFORMATION LOGIC SPECIFIC TO THE UBUNTU DIALOGUE CORPUS DATASETS
 
 N_CHUNKS = 8
 LENGTH_PERCENTILE = 95  # Percentile for filtering sequence lengths
@@ -16,9 +12,10 @@ os.chdir(PATH_WORKSPACE_ROOT)
 
 # ==========================
 
+folder_dataset = 'dataset'
 base_filename = 'ubuntu_dialogue_corpus_196'
-path_input_csv = os.path.join(FOLDER_DATASET, csv_filename(base_filename))
-path_output_csv = os.path.join(FOLDER_DATASET, csv_filename(base_filename + '_input_output_pairs'))
+path_input_csv = os.path.join(folder_dataset, csv_filename(base_filename))
+path_output_csv = os.path.join(folder_dataset, csv_filename(base_filename + '_input_output_pairs'))
 
 # ==========================
 
