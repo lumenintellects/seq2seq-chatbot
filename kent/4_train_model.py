@@ -276,6 +276,7 @@ if __name__ == "__main__":
     # Define Loss Function and Optimizer
     criterion = nn.CrossEntropyLoss(ignore_index=padding_value)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=3, verbose=True)
 
     # If model state exists, load it
     if os.path.exists(path_model):
@@ -394,6 +395,7 @@ if __name__ == "__main__":
                 logger.info("Model state saved.")
 
                 no_improvement_epochs = 0 # reset counter
+                scheduler.step(val_loss) # adjust learning rate if needed
             else:
               no_improvement_epochs += 1
 
