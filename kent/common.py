@@ -82,7 +82,7 @@ def get_setting(setting_name):
         str: The value of the setting.
     """
     filename_settings = json_filename(BASE_FILENAME_SETTINGS)
-    relative_path_settings = os.path.join(FOLDER_DATASET, filename_settings)
+    relative_path_settings = os.path.join(filename_settings)
     path_settings = os.path.join(PATH_WORKSPACE_ROOT, relative_path_settings)
 
     # Load the settings JSON file
