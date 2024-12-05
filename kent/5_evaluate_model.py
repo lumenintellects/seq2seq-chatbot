@@ -56,19 +56,21 @@ def evaluate_model(model, dataloader, criterion, vocab, device):
             src, trg = src.to(device), trg.to(device)
 
             # Generate predictions
-            outputs = model(src, trg[:, :-1])  # Exclude <eos> from target
-            outputs = outputs.argmax(dim=-1)  # Get the predicted token indices
-
-            # Compute loss
-            outputs_reshaped = outputs.reshape(-1, outputs.shape[-1])
+            logits = model(src, trg[:, :-1])  # Exclude <eos> from target
+            
+            # Use logits for loss computation
+            logits_reshaped = logits.reshape(-1, logits.shape[-1])
             trg_reshaped = trg[:, 1:].reshape(-1)  # Exclude <bos>
-            loss = criterion(outputs_reshaped, trg_reshaped)
+            loss = criterion(logits_reshaped, trg_reshaped)
             test_loss += loss.item()
+
+            # Use argmax for token prediction (for BLEU)
+            predictions = logits.argmax(dim=-1)  # Get the predicted token indices
 
             # Decode predictions and references
             for i in range(src.size(0)):
                 reference = [idx_to_token(vocab, trg[i].tolist())]
-                hypothesis = idx_to_token(vocab, outputs[i].tolist())
+                hypothesis = idx_to_token(vocab, predictions[i].tolist())
 
                 all_references.append(reference)  # Reference needs to be a list of list
                 all_hypotheses.append(hypothesis)
@@ -77,7 +79,6 @@ def evaluate_model(model, dataloader, criterion, vocab, device):
     bleu_score = corpus_bleu(all_references, all_hypotheses)
 
     return test_loss, bleu_score
-
 
 def idx_to_token(vocab, indices):
     """
@@ -213,7 +214,7 @@ if __name__ == "__main__":
     combined_sequences = list(zip(input_sequences_padded, output_sequences_padded))
 
     # Split data into test set only
-    _, _, test_data = train_test_split(combined_sequences, test_size=NON_TRAIN_DATA_PROPORTION, random_state=RANDOM_SEED)
+    _, test_data = train_test_split(combined_sequences, test_size=NON_TRAIN_DATA_PROPORTION, random_state=RANDOM_SEED)
 
     # Unpack test set
     test_inputs, test_outputs = zip(*test_data)
