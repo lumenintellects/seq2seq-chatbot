@@ -4,7 +4,7 @@ import time
 import spacy
 from common import PATH_WORKSPACE_ROOT, get_setting_training_loop_continue, get_setting_next_subset_continue
 from common import get_setting_analyze_sequences, get_setting_training_subset_size
-from common import Encoder, Attention, DecoderWithAttention, Seq2SeqWithAttention
+from common_attention import EncoderWithAttention, Attention, DecoderWithAttention, Seq2SeqWithAttention
 from common import PATH_WORKSPACE_ROOT, get_path_log, get_path_input_output_pairs, get_path_vocab
 from common import get_path_input_sequences, get_path_output_sequences
 from common import get_path_input_sequences_padded_batch_pattern, get_path_output_sequences_padded_batch_pattern
@@ -20,7 +20,7 @@ from sklearn.model_selection import train_test_split
 # Set the current working directory using the constant from common.py
 os.chdir(PATH_WORKSPACE_ROOT)
 
-LOG_BASE_FILENAME = "4_train_model"
+LOG_BASE_FILENAME = "4_train_model_with_attention"
 DATASET_NAME = 'ubuntu_dialogue_corpus_000'
 MODEL_NAME = 'seq2seq_attention'
 MODEL_VERSION = '1.0'
@@ -269,23 +269,26 @@ if __name__ == "__main__":
     # Initialize encoder, decoder, and seq2seq model
     logger.info("Initializing encoder, decoder, and seq2seq model...")
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    encoder = Encoder(INPUT_DIM, EMB_DIM, HIDDEN_DIM, N_LAYERS, DROPOUT).to(device)
 
-    # Attention layer
-    attention = Attention(encoder_hidden_dim=HIDDEN_DIM, decoder_hidden_dim=HIDDEN_DIM)
+    # Initialize attention mechanism
+    attention = Attention(encoder_hidden_dim=HIDDEN_DIM, decoder_hidden_dim=HIDDEN_DIM).to(device)
 
-    # Decoder with attention
+    # Initialize encoder
+    encoder = EncoderWithAttention(INPUT_DIM, EMB_DIM, HIDDEN_DIM, N_LAYERS, DROPOUT).to(device)
+
+    # Initialize decoder with attention
     decoder = DecoderWithAttention(
-        OUTPUT_DIM,
-        EMB_DIM,
-        HIDDEN_DIM,
-        N_LAYERS,
-        DROPOUT,
-        attention
+        output_dim=OUTPUT_DIM,
+        emb_dim=EMB_DIM,
+        hidden_dim=HIDDEN_DIM,
+        n_layers=N_LAYERS,
+        dropout=DROPOUT,
+        attention=attention,
+        encoder_hidden_dim=HIDDEN_DIM,  # Pass this to support bidirectional encoding
     ).to(device)
 
-    # Seq2Seq model with attention
-    model = Seq2SeqWithAttention(encoder, decoder, device).to(device)
+    # Initialize Seq2Seq model with attention
+    model = Seq2SeqWithAttention(encoder=encoder, decoder=decoder, device=device).to(device)
 
     # Define Loss Function and Optimizer
     criterion = nn.CrossEntropyLoss(ignore_index=padding_value)
