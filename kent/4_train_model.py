@@ -257,7 +257,7 @@ if __name__ == "__main__":
     HIDDEN_DIM = 512
     N_LAYERS = 2
     DROPOUT = 0.5
-    BATCH_SIZE = 64
+    BATCH_SIZE = 16
     num_epochs = 10
 
     # Check GPU Availability
