@@ -49,6 +49,51 @@ def build_vocab(tokens_iterable, specials=["<unk>", "<pad>", "<bos>", "<eos>"]):
                 vocab[token] = len(vocab)
     return vocab
 
+# Prune vocabulary by token frequency
+def build_pruned_vocab(tokens_iterable, min_freq=2, specials=["<unk>", "<pad>", "<bos>", "<eos>"]):
+    """
+    Prunes tokens from the vocabulary that appear less than `min_freq`.
+
+    Parameters:
+        tokens_iterable (list of lists): Iterable of tokenized texts.
+        min_freq (int): Minimum frequency for tokens to be kept.
+        specials (list): Special tokens that should always be kept.
+
+    Returns:
+        dict: Pruned vocabulary mapping tokens to indices.
+        dict: Token frequencies for reference.
+    """
+    # Count token frequencies
+    token_freq = {}
+    for tokens in tokens_iterable:
+        for token in tokens:
+            token_freq[token] = token_freq.get(token, 0) + 1
+
+    # Build pruned vocabulary
+    vocab = {special: i for i, special in enumerate(specials)}
+    for token, freq in token_freq.items():
+        if freq >= min_freq and token not in vocab:
+            vocab[token] = len(vocab)
+
+    return vocab, token_freq
+
+# Log token frequency distribution
+def log_token_frequency_stats(token_freq):
+    """
+    Logs statistics about token frequency distribution.
+
+    Parameters:
+        token_freq (dict): Dictionary of token frequencies.
+    """
+    frequencies = list(token_freq.values())
+    mean_freq = np.mean(frequencies)
+    median_freq = np.median(frequencies)
+    max_freq = np.max(frequencies)
+    percentile_95 = np.percentile(frequencies, 95)
+
+    logger.info(f"Token Frequency Stats: Mean={mean_freq}, Median={median_freq}, Max={max_freq}, 95th Percentile={percentile_95}")
+    logger.info(f"Total Unique Tokens: {len(token_freq)}")
+
 # Process text into sequences of indices with SpaCy pipeline
 def process_text_spacy_pipe(texts, vocab, nlp, n_process=4):
     """
@@ -179,20 +224,21 @@ if __name__ == "__main__":
         time_input_sequences_end = time.time()
         logger.info(f"Tokenization completed in {time_input_sequences_end - time_input_sequences_start:.2f} seconds.")
 
-        # Build vocabulary from tokenized texts
-        logger.info("Building vocabulary...")
-        time_build_vocab_start = time.time()
-        time_build_vocab_start_hh_mm_ss = time.strftime('%H:%M:%S', time.localtime(time_build_vocab_start))
-        logger.info(f"The time is: {time_build_vocab_start_hh_mm_ss}")
-        vocab = build_vocab(combined_tokens)
-        time_build_vocab_end = time.time()
-        logger.info(f"Vocabulary built in {time_build_vocab_end - time_build_vocab_start} seconds.")
-        logger.info(f"Vocabulary built. Size: {len(vocab)}")
+        # Build pruned vocabulary based on frequency
+        logger.info("Building pruned vocabulary...")
+        time_build_pruned_vocab_start = time.time()
+        vocab, token_freq = build_pruned_vocab(combined_tokens, min_freq=2)  # Use MIN_FREQ=2 as default
+        time_build_pruned_vocab_end = time.time()
+        logger.info(f"Pruned vocabulary built in {time_build_pruned_vocab_end - time_build_pruned_vocab_start:.2f} seconds.")
+        logger.info(f"Pruned vocabulary size: {len(vocab)}")
 
-        # Save the vocabulary to file
+        # Log statistics
+        log_token_frequency_stats(token_freq)
+
+        # Save the pruned vocabulary to file
         with open(path_vocab, "wb") as vocab_file:
             pickle.dump(vocab, vocab_file)
-        logger.info("Vocabulary saved to file.")
+        logger.info("Pruned vocabulary saved to file.")
 
     padding_value = vocab["<pad>"]
 
