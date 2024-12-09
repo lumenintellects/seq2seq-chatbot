@@ -4,7 +4,6 @@ import time
 import spacy
 from common import PATH_WORKSPACE_ROOT, get_setting_training_loop_continue, get_setting_next_subset_continue
 from common import get_setting_training_subset_size
-from common_attention import EncoderWithAttention, Attention, DecoderWithAttention, Seq2SeqWithAttention
 from common import PATH_WORKSPACE_ROOT, get_path_log, get_path_input_output_pairs, get_path_vocab
 from common import get_path_input_sequences, get_path_output_sequences
 from common import get_path_input_sequences_padded_batch_pattern, get_path_output_sequences_padded_batch_pattern
@@ -22,9 +21,9 @@ import torch.nn.functional as F
 os.chdir(PATH_WORKSPACE_ROOT)
 
 LOG_BASE_FILENAME = "4_train_model_with_attention"
-DATASET_NAME = 'ubuntu_dialogue_corpus_000'
+DATASET_NAME = 'ubuntu_dialogue_corpus_sample'
 MODEL_NAME = 'seq2seq_attention'
-MODEL_VERSION = '1.0'
+MODEL_VERSION = '0.0'
 
 path_input_csv = get_path_input_output_pairs(DATASET_NAME)
 path_vocab_pkl = get_path_vocab(DATASET_NAME)
@@ -37,7 +36,6 @@ path_output_sequences_padded_batch_pattern = get_path_output_sequences_padded_ba
 path_model = get_path_model(MODEL_NAME, MODEL_VERSION)
 
 # ==========================
-
 
 NON_TRAIN_DATA_PROPORTION = 0.2
 RANDOM_SEED = 42
@@ -58,57 +56,89 @@ class Attention(nn.Module):
 
     def __init__(self, encoder_hidden_dim, decoder_hidden_dim):
         super().__init__()
-        # Input to attn is concatenated (encoder_hidden_dim * 2) + decoder_hidden_dim
-        self.attn = nn.Linear((encoder_hidden_dim * 2) + decoder_hidden_dim, decoder_hidden_dim)
+        # Project to a common dimension
+        input_features = encoder_hidden_dim + decoder_hidden_dim
+        self.attn = nn.Linear(input_features, decoder_hidden_dim)
         self.v = nn.Linear(decoder_hidden_dim, 1, bias=False)
 
-    def forward(self, hidden, encoder_outputs):
+    def forward(self, hidden, encoder_outputs, mask=None):
         # hidden: [batch_size, decoder_hidden_dim]
-        # encoder_outputs: [batch_size, src_len, encoder_hidden_dim * 2]
-        
+        # encoder_outputs: [batch_size, src_len, encoder_hidden_dim]
+
         batch_size = encoder_outputs.shape[0]
         src_len = encoder_outputs.shape[1]
-        
-        # Repeat hidden state src_len times for concatenation
-        hidden = hidden.unsqueeze(1).repeat(1, src_len, 1)  # [batch_size, src_len, decoder_hidden_dim]
-        
-        # Concatenate hidden and encoder_outputs
-        energy = torch.tanh(self.attn(torch.cat((hidden, encoder_outputs), dim=2)))  # [batch_size, src_len, decoder_hidden_dim]
-        
-        # Compute attention weights
-        attention = self.v(energy).squeeze(2)  # [batch_size, src_len]
-        return F.softmax(attention, dim=1)
 
-class EncoderWithAttention(nn.Module):
+        # Project the encoder outputs and decoder hidden state
+        hidden = hidden.unsqueeze(1).repeat(1, src_len, 1)  # [batch_size, src_len, decoder_hidden_dim]
+        encoder_outputs = encoder_outputs  # [batch_size, src_len, encoder_hidden_dim]
+
+        # Concatenate and compute energies
+        energy = torch.tanh(self.attn(torch.cat((hidden, encoder_outputs), dim=2)))  # [batch_size, src_len, decoder_hidden_dim]
+        attention = self.v(energy).squeeze(2)  # [batch_size, src_len]
+
+        if mask is not None:
+            attention = attention.masked_fill(mask == 0, -1e10)
+
+        return F.softmax(attention, dim=1)  # [batch_size, src_len]
+
+class BidirectionalEncoderWithAttention(nn.Module):
     """
-    Encoder with attention mechanism.
+    Bidirectional Encoder with attention mechanism.
     """
 
     def __init__(self, input_dim, emb_dim, hidden_dim, n_layers, dropout):
-        super(EncoderWithAttention, self).__init__()
+        """
+        Initialize the encoder.
+
+        Args:
+            input_dim (int): Size of the input vocabulary.
+            emb_dim (int): Dimensionality of word embeddings.
+            hidden_dim (int): Hidden dimension for GRU.
+            n_layers (int): Number of GRU layers.
+            dropout (float): Dropout rate.
+        """
+        super().__init__()
+
+        self.hidden_dim = hidden_dim
+        self.n_layers = n_layers
+        self.emb_dim = emb_dim
+
+        # Embedding layer to convert tokens to embeddings
         self.embedding = nn.Embedding(input_dim, emb_dim)
-        self.rnn = nn.GRU(emb_dim, hidden_dim, n_layers, dropout=dropout, batch_first=True)
+
+        # Bidirectional GRU
+        self.rnn = nn.GRU(
+            emb_dim,
+            hidden_dim,
+            n_layers,
+            dropout=dropout,
+            bidirectional=True,
+            batch_first=True
+        )
+
+        # Dropout layer
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, src):
         """
-        Forward pass of the encoder.
+        Forward pass through the encoder.
 
         Args:
-            src: [batch_size, src_len] - Input sequences.
+            src (Tensor): Source sequence tensor with shape [batch_size, src_len].
 
         Returns:
-            outputs: [batch_size, src_len, hidden_dim] - Encoder outputs for attention.
-            hidden: [n_layers, batch_size, hidden_dim] - Final hidden state.
+            outputs (Tensor): Encoder outputs for attention, shape [batch_size, src_len, hidden_dim * 2].
+            hidden (Tensor): Hidden state, shape [n_layers * 2, batch_size, hidden_dim].
         """
-        # Embed and apply dropout
+        # Apply embedding and dropout
         embedded = self.dropout(self.embedding(src))  # [batch_size, src_len, emb_dim]
 
         # Pass through GRU
-        outputs, hidden = self.rnn(embedded)  # outputs: [batch_size, src_len, hidden_dim]
-                                              # hidden: [n_layers, batch_size, hidden_dim]
+        outputs, hidden = self.rnn(embedded)  # 
+        # outputs: [batch_size, src_len, hidden_dim * 2] (bidirectional outputs)
+        # hidden: [n_layers * 2, batch_size, hidden_dim] (stacked forward & backward hidden states)
 
-        return outputs, hidden  # Return both for attention
+        return outputs, hidden
 
 class DecoderWithAttention(nn.Module):
     """
@@ -116,6 +146,18 @@ class DecoderWithAttention(nn.Module):
     """
 
     def __init__(self, output_dim, emb_dim, hidden_dim, n_layers, dropout, attention, encoder_hidden_dim):
+        """
+        Initialize the decoder.
+
+        Args:
+            output_dim (int): Size of the output vocabulary.
+            emb_dim (int): Dimensionality of word embeddings.
+            hidden_dim (int): Hidden dimension for GRU.
+            n_layers (int): Number of GRU layers.
+            dropout (float): Dropout rate.
+            attention (nn.Module): Attention mechanism.
+            encoder_hidden_dim (int): Hidden dimension of the encoder.
+        """
         super().__init__()
 
         self.output_dim = output_dim
@@ -123,86 +165,102 @@ class DecoderWithAttention(nn.Module):
         self.n_layers = n_layers
         self.attention = attention
 
-        # Add a layer to reduce encoder hidden states to match decoder hidden_dim
-        self.reduce_hidden = nn.Linear(encoder_hidden_dim * 2, hidden_dim)  # Project bidirectional hidden states
-
+        # Embedding layer for target sequences
         self.embedding = nn.Embedding(output_dim, emb_dim)
+
+        # GRU layer
         self.rnn = nn.GRU(
-            emb_dim + (encoder_hidden_dim * 2),  # Input includes weighted context
+            emb_dim + encoder_hidden_dim * 2,  # Input is embedding + attention context
             hidden_dim,
             n_layers,
             dropout=dropout,
-            batch_first=True,
+            batch_first=True
         )
-        self.fc_out = nn.Linear((encoder_hidden_dim * 2) + hidden_dim + emb_dim, output_dim)
+
+        # Fully connected layer to generate predictions
+        self.fc_out = nn.Linear(hidden_dim + encoder_hidden_dim * 2 + emb_dim, output_dim)
+
+        # Dropout layer
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, input, hidden, encoder_outputs):
         """
-        Forward pass for Decoder with Attention.
+        Forward pass through the decoder.
+
         Args:
-        - input: [batch_size] - Current target token.
-        - hidden: [n_layers, batch_size, hidden_dim] - Decoder hidden state.
-        - encoder_outputs: [batch_size, src_len, encoder_hidden_dim * 2] - Encoder outputs.
+            input (Tensor): Current input token indices [batch_size].
+            hidden (Tensor): Previous hidden state [n_layers, batch_size, hidden_dim].
+            encoder_outputs (Tensor): Encoder outputs [batch_size, src_len, encoder_hidden_dim * 2].
+
+        Returns:
+            prediction (Tensor): Predicted token scores [batch_size, output_dim].
+            hidden (Tensor): Updated hidden state [n_layers, batch_size, hidden_dim].
         """
+        # Input shape: [batch_size]
+        input = input.unsqueeze(1)  # Add a time dimension [batch_size, 1]
 
-        print(f"DEBUG: Encoder outputs: {encoder_outputs.shape}, Decoder hidden state: {hidden.shape}")
-
-        # Reduce hidden state dimensionality
-        if hidden.size(2) != self.hidden_dim:  # Only apply if dimensions don't match
-            hidden = torch.tanh(self.reduce_hidden(hidden.permute(1, 0, 2)))  # [batch_size, n_layers, hidden_dim]
-            hidden = hidden.permute(1, 0, 2)  # [n_layers, batch_size, hidden_dim]
-
-        input = input.unsqueeze(1)  # [batch_size, 1]
+        # Apply embedding and dropout
         embedded = self.dropout(self.embedding(input))  # [batch_size, 1, emb_dim]
 
-        # Attention mechanism
+        # Compute attention weights and context
         a = self.attention(hidden[-1], encoder_outputs)  # [batch_size, src_len]
         a = a.unsqueeze(1)  # [batch_size, 1, src_len]
-        weighted = torch.bmm(a, encoder_outputs)  # [batch_size, 1, encoder_hidden_dim * 2]
+        context = torch.bmm(a, encoder_outputs)  # [batch_size, 1, encoder_hidden_dim * 2]
 
-        # Concatenate context and embedded input
-        rnn_input = torch.cat((embedded, weighted), dim=2)  # [batch_size, 1, emb_dim + encoder_hidden_dim * 2]
+        # Concatenate context with embedded input
+        rnn_input = torch.cat((embedded, context), dim=2)  # [batch_size, 1, emb_dim + encoder_hidden_dim * 2]
 
+        # Pass through GRU
         output, hidden = self.rnn(rnn_input, hidden)  # output: [batch_size, 1, hidden_dim]
-        output = output.squeeze(1)  # [batch_size, hidden_dim]
-        weighted = weighted.squeeze(1)  # [batch_size, encoder_hidden_dim * 2]
 
-        # Compute final output prediction
-        prediction = self.fc_out(torch.cat((output, weighted, embedded.squeeze(1)), dim=1))  # [batch_size, output_dim]
+        # Concatenate output, context, and embedded input for prediction
+        output = output.squeeze(1)  # [batch_size, hidden_dim]
+        context = context.squeeze(1)  # [batch_size, encoder_hidden_dim * 2]
+        embedded = embedded.squeeze(1)  # [batch_size, emb_dim]
+        prediction = self.fc_out(torch.cat((output, context, embedded), dim=1))  # [batch_size, output_dim]
 
         return prediction, hidden
 
+# Seq2Seq model with Attention
 class Seq2SeqWithAttention(nn.Module):
     def __init__(self, encoder, decoder, device):
-        super().__init__()
+        """
+        Initialize the Seq2Seq model with attention.
+
+        Args:
+            encoder (nn.Module): The encoder module.
+            decoder (nn.Module): The decoder module with attention.
+            device (torch.device): The device to run the model on (CPU/GPU).
+        """
+        super(Seq2SeqWithAttention, self).__init__()
         self.encoder = encoder
         self.decoder = decoder
         self.device = device
 
     def forward(self, src, trg, teacher_forcing_ratio=0.5):
         """
-        Forward pass of the Seq2Seq model with attention.
+        Forward pass for the Seq2Seq model with attention.
 
         Args:
-            src: [batch_size, src_len] - Source sequences.
-            trg: [batch_size, trg_len] - Target sequences.
-            teacher_forcing_ratio: Probability to use teacher forcing.
+            src (Tensor): Source input sequences [batch_size, src_len].
+            trg (Tensor): Target input sequences [batch_size, trg_len].
+            teacher_forcing_ratio (float): Probability to use teacher forcing.
 
         Returns:
-            outputs: [trg_len, batch_size, output_dim] - Decoder outputs.
+            outputs (Tensor): Decoder outputs [batch_size, trg_len, output_dim].
         """
+        # Get input dimensions
         batch_size = trg.shape[0]
         trg_len = trg.shape[1]
         trg_vocab_size = self.decoder.output_dim
 
-        # Initialize output tensor
-        outputs = torch.zeros(trg_len, batch_size, trg_vocab_size).to(self.device)
+        # Initialize tensor to store decoder outputs
+        outputs = torch.zeros(batch_size, trg_len, trg_vocab_size).to(self.device)
 
         # Pass source through encoder
         encoder_outputs, hidden = self.encoder(src)
 
-        # Initialize the first input as the <bos> token
+        # Initialize the first input as the <BOS> token
         input = trg[:, 0]
 
         for t in range(1, trg_len):
@@ -210,7 +268,7 @@ class Seq2SeqWithAttention(nn.Module):
             output, hidden = self.decoder(input, hidden, encoder_outputs)
 
             # Store the output
-            outputs[t] = output
+            outputs[:, t, :] = output
 
             # Decide whether to use teacher forcing
             teacher_force = torch.rand(1).item() < teacher_forcing_ratio
@@ -312,7 +370,8 @@ if __name__ == "__main__":
     INPUT_DIM = len(vocab)
     OUTPUT_DIM = len(vocab)
     EMB_DIM = 256
-    HIDDEN_DIM = 512
+    ENCODER_HIDDEN_DIM = 512
+    DECODER_HIDDEN_DIM = ENCODER_HIDDEN_DIM # using the same hidden dimension for encoder and decoder
     N_LAYERS = 2
     DROPOUT = 0.5
     BATCH_SIZE = 16
@@ -324,39 +383,45 @@ if __name__ == "__main__":
     logger.info(f"Device ID: {torch.cuda.current_device()}")  # Should print the device ID (e.g., 0)
     logger.info(f"Device Name: {torch.cuda.get_device_name(0)}")  # Should print the name of the GPU
 
-    # Initialize encoder, decoder, and seq2seq model
-    logger.info("Initializing encoder, decoder, and seq2seq model...")
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+    # Initialize encoder, decoder, and seq2seq model
+    logger.info("Initializing encoder, decoder, and seq2seq model...")
+
     # Initialize attention mechanism
-    attention = Attention(encoder_hidden_dim=HIDDEN_DIM, decoder_hidden_dim=HIDDEN_DIM).to(device)
+    attention = Attention(encoder_hidden_dim=ENCODER_HIDDEN_DIM, decoder_hidden_dim=DECODER_HIDDEN_DIM).to(device)
+    logger.info("Attention mechanism initialized with encoder hidden dimension of {ENCODER_HIDDEN_DIM} and decoder hidden dimension of {DECODER_HIDDEN_DIM}.")
 
     # Initialize encoder
-    encoder = EncoderWithAttention(INPUT_DIM, EMB_DIM, HIDDEN_DIM, N_LAYERS, DROPOUT).to(device)
+    encoder_with_attention = BidirectionalEncoderWithAttention(
+        INPUT_DIM, EMB_DIM, ENCODER_HIDDEN_DIM, N_LAYERS, DROPOUT).to(device)
+    logger.info(f"Encoder initialized with input dimension of {INPUT_DIM}, embedding dimension of {EMB_DIM}, hidden dimension of {ENCODER_HIDDEN_DIM}, {N_LAYERS} layers, and dropout of {DROPOUT}.")
 
     # Initialize decoder with attention
-    decoder = DecoderWithAttention(
+    decoder_with_attention = DecoderWithAttention(
         output_dim=OUTPUT_DIM,
         emb_dim=EMB_DIM,
-        hidden_dim=HIDDEN_DIM,
+        hidden_dim=DECODER_HIDDEN_DIM,
         n_layers=N_LAYERS,
         dropout=DROPOUT,
         attention=attention,
-        encoder_hidden_dim=HIDDEN_DIM,  # Pass this to support bidirectional encoding
+        encoder_hidden_dim=ENCODER_HIDDEN_DIM,  # Pass this to support bidirectional encoding
     ).to(device)
+    logger.info(f"Decoder initialized with output dimension of {OUTPUT_DIM}, embedding dimension of {EMB_DIM}, hidden dimension of {DECODER_HIDDEN_DIM}, {N_LAYERS} layers, and dropout of {DROPOUT}.") 
 
     # Initialize Seq2Seq model with attention
-    model = Seq2SeqWithAttention(encoder=encoder, decoder=decoder, device=device).to(device)
+    model_with_attention = Seq2SeqWithAttention(encoder=encoder_with_attention, decoder=decoder_with_attention, device=device).to(device)
+    logger.info("Seq2Seq model with attention initialized.")
 
     # Define Loss Function and Optimizer
     criterion = nn.CrossEntropyLoss(ignore_index=padding_value)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    optimizer = torch.optim.Adam(model_with_attention.parameters(), lr=0.001)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=3, verbose=True)
 
     # If model state exists, load it
     if os.path.exists(path_model):
         logger.info("Loading model state...")
-        model.load_state_dict(torch.load(path_model, weights_only=True))
+        model_with_attention.load_state_dict(torch.load(path_model, weights_only=True))
         logger.info("Model state loaded.")
     else:
         logger.info("Model state not found. Initializing new model.")
@@ -424,13 +489,13 @@ if __name__ == "__main__":
         while get_setting_training_loop_continue():
 
             # Training Phase
-            model.train()
+            model_with_attention.train()
             epoch_loss = 0
             for src, trg in subset_train_loader:
                 src, trg = src.to(device), trg.to(device)
                 optimizer.zero_grad()
 
-                outputs = model(src, trg[:, :-1])
+                outputs = model_with_attention(src, trg[:, :-1])
                 outputs = outputs.reshape(-1, outputs.shape[-1])
                 trg = trg[:, 1:].reshape(-1)
 
@@ -444,13 +509,13 @@ if __name__ == "__main__":
             loss_history.append(train_loss)
 
             # Validation Phase
-            model.eval()
+            model_with_attention.eval()
             val_loss = 0
             with torch.no_grad():
                 for src, trg in subset_val_loader:
                     src, trg = src.to(device), trg.to(device)
 
-                    outputs = model(src, trg[:, :-1])
+                    outputs = model_with_attention(src, trg[:, :-1])
                     outputs = outputs.reshape(-1, outputs.shape[-1])
                     trg = trg[:, 1:].reshape(-1)
 
@@ -466,7 +531,7 @@ if __name__ == "__main__":
             if has_val_loss_improved:
                 best_val_loss = val_loss
 
-                torch.save(model.state_dict(), path_model)
+                torch.save(model_with_attention.state_dict(), path_model)
                 logger.info("Model state saved.")
 
                 no_improvement_epochs = 0 # reset counter
