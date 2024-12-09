@@ -492,8 +492,6 @@ if __name__ == "__main__":
 
         logger.info("Splitting data into train, test, and val sets...")
 
-        data_splitting_start_time = time.time()
-
         subset_dataset_size = len(subset_combined_sequences)
         subset_indices = list(range(subset_dataset_size))
         train_non_train_split = int(np.floor(NON_TRAIN_DATA_PROPORTION * subset_dataset_size))  # portion for test and validation
@@ -515,12 +513,9 @@ if __name__ == "__main__":
         subset_train_loader = DataLoader(combined_sequences, batch_size=BATCH_SIZE, sampler=train_sampler, num_workers=PARALLEL_SPLIT_THREAD_COUNT)
         subset_val_loader = DataLoader(combined_sequences, batch_size=BATCH_SIZE, sampler=val_sampler, num_workers=PARALLEL_SPLIT_THREAD_COUNT)
 
-        data_splitting_end_time = time.time()
-        data_splitting_duration_seconds = data_splitting_end_time - data_splitting_start_time
-        data_splitting_duration_hours_minutes_seconds = time.strftime('%H:%M:%S', time.gmtime(data_splitting_duration_seconds))
-        logger.info(f"Data splitting completed in {data_splitting_duration_hours_minutes_seconds}")
-
 # ==========================
+
+        logger.info("Training loop started...")
 
         # Epoch-wise training
         iteration_start_time = time.time()
@@ -529,6 +524,9 @@ if __name__ == "__main__":
         epoch_number = 0
 
         while get_setting_training_loop_continue():
+
+            epoch_number += 1
+            logger.info(f"Epoch {epoch_number} started at {time.strftime('%H:%M:%S')}")
 
             # Training Phase
             model_with_attention.train()
@@ -546,7 +544,6 @@ if __name__ == "__main__":
                 optimizer.step()
                 epoch_loss += loss.item()
 
-            epoch_number += 1
             train_loss = epoch_loss / len(subset_train_loader)
             loss_history.append(train_loss)
 
