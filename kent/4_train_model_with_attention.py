@@ -1,5 +1,6 @@
 import glob
 import os
+import random
 import time
 import spacy
 from common import PATH_WORKSPACE_ROOT, get_setting_training_loop_continue, get_setting_next_subset_continue
@@ -412,12 +413,12 @@ if __name__ == "__main__":
     # Hyperparameters
     INPUT_DIM = len(vocab)
     OUTPUT_DIM = len(vocab)
-    EMB_DIM = 256
-    ENCODER_HIDDEN_DIM = 512
+    EMB_DIM = 128
+    ENCODER_HIDDEN_DIM = 256
     DECODER_HIDDEN_DIM = ENCODER_HIDDEN_DIM # using the same hidden dimension for encoder and decoder
     N_LAYERS = 2
     DROPOUT = 0.5
-    BATCH_SIZE = 8
+    BATCH_SIZE = 4
 
     # Check GPU Availability
     logger.info("Checking GPU availability...")
@@ -486,8 +487,7 @@ if __name__ == "__main__":
 
         # Create a subset of the dataset for training
         logger.info(f"Creating a subset of the dataset for training with size: {TRAINING_SUBSET_SIZE}")
-        subset_indices = np.random.choice(combined_indices, size=TRAINING_SUBSET_SIZE, replace=False)
-        subset_combined_sequences = [combined_sequences[i] for i in subset_indices]
+        subset_combined_sequences = random.sample(combined_sequences, TRAINING_SUBSET_SIZE)
 
         logger.info("Splitting data into train, test, and val sets...")
 
