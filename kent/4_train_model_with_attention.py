@@ -38,8 +38,7 @@ path_model = get_path_model(MODEL_NAME, MODEL_VERSION)
 
 # ==========================
 
-NON_TRAIN_DATA_PROPORTION = 0.5
-TEST_DATA_PROPORTION = 0.2
+VAL_DATA_PROPORTION = 0.2
 
 RANDOM_SEED = 42
 
@@ -494,20 +493,22 @@ if __name__ == "__main__":
 
         subset_dataset_size = len(subset_combined_sequences)
         subset_indices = list(range(subset_dataset_size))
-        train_non_train_split = int(np.floor(NON_TRAIN_DATA_PROPORTION * subset_dataset_size))  # portion for test and validation
 
-        # Shuffle the dataset
+        # Compute the split sizes
+        train_data_proportion = 1 - VAL_DATA_PROPORTION
+        train_val_split = int(np.floor(train_data_proportion*subset_dataset_size))  # 80% train, 20% validation
+
+        # Shuffle the dataset indices
         np.random.seed(RANDOM_SEED)
         np.random.shuffle(subset_indices)
 
-        # Split indices
-        train_indices, non_train_indices = subset_indices[train_non_train_split:], subset_indices[:train_non_train_split]
-        val_indices, test_indices = non_train_indices[:len(non_train_indices) // 2], non_train_indices[len(non_train_indices) // 2:]
+        # Split the indices into train and validation
+        train_indices = subset_indices[:train_val_split]
+        val_indices = subset_indices[train_val_split:]
 
         # Define samplers
         train_sampler = SubsetRandomSampler(train_indices)
         val_sampler = SubsetRandomSampler(val_indices)
-        test_sampler = SubsetRandomSampler(test_indices)
 
         # Create DataLoaders
         subset_train_loader = DataLoader(combined_sequences, batch_size=BATCH_SIZE, sampler=train_sampler, num_workers=PARALLEL_SPLIT_THREAD_COUNT)
