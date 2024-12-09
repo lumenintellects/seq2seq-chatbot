@@ -3,7 +3,7 @@ import os
 import time
 import spacy
 from common import PATH_WORKSPACE_ROOT, get_setting_training_loop_continue, get_setting_next_subset_continue
-from common import get_setting_analyze_sequences, get_setting_training_subset_size
+from common import get_setting_training_subset_size
 from common_attention import EncoderWithAttention, Attention, DecoderWithAttention, Seq2SeqWithAttention
 from common import PATH_WORKSPACE_ROOT, get_path_log, get_path_input_output_pairs, get_path_vocab
 from common import get_path_input_sequences, get_path_output_sequences
@@ -16,6 +16,7 @@ import pickle
 import numpy as np
 import logging
 from sklearn.model_selection import train_test_split
+import torch.nn.functional as F
 
 # Set the current working directory using the constant from common.py
 os.chdir(PATH_WORKSPACE_ROOT)
@@ -48,108 +49,174 @@ BATCH_SIZE = 500000
 TRAINING_SUBSET_SIZE = get_setting_training_subset_size()
 LOSS_THRESHOLD = 1.0
 
-# Tokenizer using spaCy with multithreading
-def spacy_tokenizer_pipe(texts, nlp, n_process=4):
+# ==========================
+
+class Attention(nn.Module):
     """
-    Tokenizes a list of texts using SpaCy's nlp.pipe for multithreaded tokenization.
-
-    Parameters:
-        texts (list): List of text strings to tokenize.
-        nlp: SpaCy language model.
-        n_process (int): Number of processes for parallel processing.
-
-    Returns:
-        list: List of tokenized texts.
+    Attention mechanism to compute attention weights.
     """
-    logger.info(f"Tokenizing {len(texts)} texts using {n_process} processes...")
-    tokenized_texts = []
-    for doc in nlp.pipe(texts, n_process=n_process):
-        tokenized_texts.append([token.text.lower() for token in doc if not token.is_space])
-    return tokenized_texts
 
-# Tokenizer using spaCy
-def spacy_tokenizer(text):
-    return [token.text.lower() for token in nlp(text) if not token.is_space]
+    def __init__(self, encoder_hidden_dim, decoder_hidden_dim):
+        super().__init__()
+        # Input to attn is concatenated (encoder_hidden_dim * 2) + decoder_hidden_dim
+        self.attn = nn.Linear((encoder_hidden_dim * 2) + decoder_hidden_dim, decoder_hidden_dim)
+        self.v = nn.Linear(decoder_hidden_dim, 1, bias=False)
 
-# Tokenize the input and output texts using spaCy
-def yield_tokens_spacy(texts):
-    for text in texts:
-        if not isinstance(text, str):
-            raise ValueError(f"Text must be a string. Got: {text}")
-        yield spacy_tokenizer(text)
+    def forward(self, hidden, encoder_outputs):
+        # hidden: [batch_size, decoder_hidden_dim]
+        # encoder_outputs: [batch_size, src_len, encoder_hidden_dim * 2]
+        
+        batch_size = encoder_outputs.shape[0]
+        src_len = encoder_outputs.shape[1]
+        
+        # Repeat hidden state src_len times for concatenation
+        hidden = hidden.unsqueeze(1).repeat(1, src_len, 1)  # [batch_size, src_len, decoder_hidden_dim]
+        
+        # Concatenate hidden and encoder_outputs
+        energy = torch.tanh(self.attn(torch.cat((hidden, encoder_outputs), dim=2)))  # [batch_size, src_len, decoder_hidden_dim]
+        
+        # Compute attention weights
+        attention = self.v(energy).squeeze(2)  # [batch_size, src_len]
+        return F.softmax(attention, dim=1)
 
-# Build vocabulary from spaCy tokens
-def build_vocab(tokens_iterable, specials=["<unk>", "<pad>", "<bos>", "<eos>"]):
-    vocab = {"<unk>": 0, "<pad>": 1, "<bos>": 2, "<eos>": 3}
-    for tokens in tokens_iterable:
-        for token in tokens:
-            if token not in vocab:
-                vocab[token] = len(vocab)
-    return vocab
-
-# Process text into sequences of indices with SpaCy pipeline
-def process_text_spacy_pipe(texts, vocab, nlp, n_process=4):
+class EncoderWithAttention(nn.Module):
     """
-    Tokenizes a list of texts using SpaCy's nlp.pipe for multithreaded processing
-    and converts them to sequences of indices.
-
-    Parameters:
-        texts (list): List of text strings to process.
-        vocab (dict): Vocabulary mapping tokens to indices.
-        nlp: SpaCy language model.
-        n_process (int): Number of processes for parallel processing.
-
-    Returns:
-        list: List of sequences of indices.
+    Encoder with attention mechanism.
     """
-    logger.info(f"Processing {len(texts)} texts using {n_process} processes...")
-    tokenized_sequences = []
-    for doc in nlp.pipe(texts, n_process=n_process):
-        tokens = ["<bos>"] + [token.text.lower() for token in doc if not token.is_space] + ["<eos>"]
-        tokenized_sequences.append([vocab.get(token, vocab["<unk>"]) for token in tokens])
-    return tokenized_sequences
 
-# Process text into sequences of indices
-def process_text_spacy(text, vocab):
-    tokens = ["<bos>"] + spacy_tokenizer(text) + ["<eos>"]
-    return [vocab.get(token, vocab["<unk>"]) for token in tokens]
+    def __init__(self, input_dim, emb_dim, hidden_dim, n_layers, dropout):
+        super(EncoderWithAttention, self).__init__()
+        self.embedding = nn.Embedding(input_dim, emb_dim)
+        self.rnn = nn.GRU(emb_dim, hidden_dim, n_layers, dropout=dropout, batch_first=True)
+        self.dropout = nn.Dropout(dropout)
 
-def analyze_sequences(sequences):
-    sequence_lengths = [len(seq) for seq in sequences]
-    max_length = max(sequence_lengths)
-    mean_length = sum(sequence_lengths) / len(sequence_lengths)
-    median_length = sorted(sequence_lengths)[len(sequence_lengths) // 2]
+    def forward(self, src):
+        """
+        Forward pass of the encoder.
 
-    # Percentiles
-    import numpy as np
-    percentile_95 = np.percentile(sequence_lengths, 95)
+        Args:
+            src: [batch_size, src_len] - Input sequences.
 
-    logger.info(f"Max Length: {max_length}")
-    logger.info(f"Mean Length: {mean_length}")
-    logger.info(f"Median Length: {median_length}")
-    logger.info(f"95th Percentile: {percentile_95}")
+        Returns:
+            outputs: [batch_size, src_len, hidden_dim] - Encoder outputs for attention.
+            hidden: [n_layers, batch_size, hidden_dim] - Final hidden state.
+        """
+        # Embed and apply dropout
+        embedded = self.dropout(self.embedding(src))  # [batch_size, src_len, emb_dim]
 
-# Explicitly pad sequences to the global maximum length
-def pad_to_length(sequences, max_length, padding_value):
+        # Pass through GRU
+        outputs, hidden = self.rnn(embedded)  # outputs: [batch_size, src_len, hidden_dim]
+                                              # hidden: [n_layers, batch_size, hidden_dim]
+
+        return outputs, hidden  # Return both for attention
+
+class DecoderWithAttention(nn.Module):
     """
-    Pads all sequences to a specified maximum length.
-
-    Parameters:
-        sequences (list of lists): Sequences to pad.
-        max_length (int): Desired maximum length.
-        padding_value (int): Padding value.
-
-    Returns:
-        torch.Tensor: Tensor of padded sequences.
+    Decoder with attention mechanism.
     """
-    padded_sequences = []
-    for seq in sequences:
-        if len(seq) > max_length:
-            seq = seq[:max_length]  # Truncate if longer than max_length
-        else:
-            seq = seq + [padding_value] * (max_length - len(seq))  # Pad if shorter
-        padded_sequences.append(seq)
-    return torch.tensor(padded_sequences, dtype=torch.int64)
+
+    def __init__(self, output_dim, emb_dim, hidden_dim, n_layers, dropout, attention, encoder_hidden_dim):
+        super().__init__()
+
+        self.output_dim = output_dim
+        self.hidden_dim = hidden_dim
+        self.n_layers = n_layers
+        self.attention = attention
+
+        # Add a layer to reduce encoder hidden states to match decoder hidden_dim
+        self.reduce_hidden = nn.Linear(encoder_hidden_dim * 2, hidden_dim)  # Project bidirectional hidden states
+
+        self.embedding = nn.Embedding(output_dim, emb_dim)
+        self.rnn = nn.GRU(
+            emb_dim + (encoder_hidden_dim * 2),  # Input includes weighted context
+            hidden_dim,
+            n_layers,
+            dropout=dropout,
+            batch_first=True,
+        )
+        self.fc_out = nn.Linear((encoder_hidden_dim * 2) + hidden_dim + emb_dim, output_dim)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, input, hidden, encoder_outputs):
+        """
+        Forward pass for Decoder with Attention.
+        Args:
+        - input: [batch_size] - Current target token.
+        - hidden: [n_layers, batch_size, hidden_dim] - Decoder hidden state.
+        - encoder_outputs: [batch_size, src_len, encoder_hidden_dim * 2] - Encoder outputs.
+        """
+
+        print(f"DEBUG: Encoder outputs: {encoder_outputs.shape}, Decoder hidden state: {hidden.shape}")
+
+        # Reduce hidden state dimensionality
+        if hidden.size(2) != self.hidden_dim:  # Only apply if dimensions don't match
+            hidden = torch.tanh(self.reduce_hidden(hidden.permute(1, 0, 2)))  # [batch_size, n_layers, hidden_dim]
+            hidden = hidden.permute(1, 0, 2)  # [n_layers, batch_size, hidden_dim]
+
+        input = input.unsqueeze(1)  # [batch_size, 1]
+        embedded = self.dropout(self.embedding(input))  # [batch_size, 1, emb_dim]
+
+        # Attention mechanism
+        a = self.attention(hidden[-1], encoder_outputs)  # [batch_size, src_len]
+        a = a.unsqueeze(1)  # [batch_size, 1, src_len]
+        weighted = torch.bmm(a, encoder_outputs)  # [batch_size, 1, encoder_hidden_dim * 2]
+
+        # Concatenate context and embedded input
+        rnn_input = torch.cat((embedded, weighted), dim=2)  # [batch_size, 1, emb_dim + encoder_hidden_dim * 2]
+
+        output, hidden = self.rnn(rnn_input, hidden)  # output: [batch_size, 1, hidden_dim]
+        output = output.squeeze(1)  # [batch_size, hidden_dim]
+        weighted = weighted.squeeze(1)  # [batch_size, encoder_hidden_dim * 2]
+
+        # Compute final output prediction
+        prediction = self.fc_out(torch.cat((output, weighted, embedded.squeeze(1)), dim=1))  # [batch_size, output_dim]
+
+        return prediction, hidden
+
+class Seq2SeqWithAttention(nn.Module):
+    def __init__(self, encoder, decoder, device):
+        super().__init__()
+        self.encoder = encoder
+        self.decoder = decoder
+        self.device = device
+
+    def forward(self, src, trg, teacher_forcing_ratio=0.5):
+        """
+        Forward pass of the Seq2Seq model with attention.
+
+        Args:
+            src: [batch_size, src_len] - Source sequences.
+            trg: [batch_size, trg_len] - Target sequences.
+            teacher_forcing_ratio: Probability to use teacher forcing.
+
+        Returns:
+            outputs: [trg_len, batch_size, output_dim] - Decoder outputs.
+        """
+        batch_size = trg.shape[0]
+        trg_len = trg.shape[1]
+        trg_vocab_size = self.decoder.output_dim
+
+        # Initialize output tensor
+        outputs = torch.zeros(trg_len, batch_size, trg_vocab_size).to(self.device)
+
+        # Pass source through encoder
+        encoder_outputs, hidden = self.encoder(src)
+
+        # Initialize the first input as the <bos> token
+        input = trg[:, 0]
+
+        for t in range(1, trg_len):
+            # Decode using attention
+            output, hidden = self.decoder(input, hidden, encoder_outputs)
+
+            # Store the output
+            outputs[t] = output
+
+            # Decide whether to use teacher forcing
+            teacher_force = torch.rand(1).item() < teacher_forcing_ratio
+            input = trg[:, t] if teacher_force else output.argmax(1)
+
+        return outputs
 
 # ==========================
 
@@ -229,15 +296,6 @@ if __name__ == "__main__":
     else:
         output_sequences_padded = torch.cat([torch.load(file, weights_only=True) for file in matching_files_output], dim=0)
         logger.info("Loaded output sequences from file.")
-
-    # Analyze sequences
-    if get_setting_analyze_sequences():
-        logger.info("Analyzing input and output sequences...")
-        analyze_sequences(input_sequences_padded)
-        analyze_sequences(output_sequences_padded)
-
-        logger.info("Input shape:", input_sequences_padded.shape)
-        logger.info("Output shape:", output_sequences_padded.shape)
 
     # ==========================
 
