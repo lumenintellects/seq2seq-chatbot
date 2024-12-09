@@ -530,6 +530,7 @@ if __name__ == "__main__":
             logger.info(f"Epoch {epoch_number} started at {time.strftime('%H:%M:%S')}")
 
             # Training Phase
+            logger.info("Training phase started...")
             model_with_attention.train()
             epoch_loss = 0
             for src, trg in subset_train_loader:
@@ -549,6 +550,7 @@ if __name__ == "__main__":
             loss_history.append(train_loss)
 
             # Validation Phase
+            logger.info("Validation phase started...")
             model_with_attention.eval()
             val_loss = 0
             with torch.no_grad():
