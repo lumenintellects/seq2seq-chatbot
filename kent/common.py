@@ -343,49 +343,6 @@ class Seq2Seq(nn.Module):
         outputs, _ = self.decoder(trg, hidden)  # Decode based on the context vector
         return outputs
 
-class Seq2SeqWithAttention(nn.Module):
-    def __init__(self, encoder, decoder, device):
-        super().__init__()
-
-        self.encoder = encoder
-        self.decoder = decoder
-        self.device = device
-
-    def forward(self, src, trg, teacher_forcing_ratio=0.5):
-        # src: [src_len, batch_size]
-        # trg: [trg_len, batch_size]
-        # teacher_forcing_ratio: probability to use teacher forcing
-
-        batch_size = trg.shape[1]
-        trg_len = trg.shape[0]
-        trg_vocab_size = self.decoder.output_dim
-
-        # Tensor to store decoder outputs
-        outputs = torch.zeros(trg_len, batch_size, trg_vocab_size).to(self.device)
-
-        # Encode the source sequence
-        encoder_outputs, hidden = self.encoder(src)
-
-        # First input to the decoder is the <bos> token
-        input = trg[0, :]
-
-        for t in range(1, trg_len):
-            # Decode
-            output, hidden = self.decoder(input, hidden, encoder_outputs)
-
-            outputs[t] = output
-
-            # Decide whether to use teacher forcing
-            teacher_force = torch.rand(1).item() < teacher_forcing_ratio
-
-            # Get the highest predicted token
-            top1 = output.argmax(1)
-
-            # Decide the next input
-            input = trg[t] if teacher_force else top1
-
-        return outputs
-
 def get_setting(setting_name):
     """
     Get the value of a setting from the settings file.
