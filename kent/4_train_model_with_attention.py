@@ -11,7 +11,7 @@ from common import get_path_input_sequences_padded_batch_pattern, get_path_outpu
 from common import get_path_model
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, TensorDataset, SubsetRandomSampler
+from torch.utils.data import DataLoader, Subset
 import pickle
 import numpy as np
 import logging
@@ -45,7 +45,7 @@ RANDOM_SEED = 42
 
 PATIENCE_LEVEL = 5 # Number of epochs to wait for improvement before early stopping
 TORCH_THREAD_COUNT = 10
-PARALLEL_SPLIT_THREAD_COUNT = TORCH_THREAD_COUNT
+PARALLEL_SPLIT_THREAD_COUNT = 0
 
 TRAINING_SUBSET_SIZE = get_setting_training_subset_size()
 LOSS_THRESHOLD = 1.0
@@ -506,13 +506,19 @@ if __name__ == "__main__":
         train_indices = subset_indices[:train_val_split]
         val_indices = subset_indices[train_val_split:]
 
-        # Define samplers
-        train_sampler = SubsetRandomSampler(train_indices)
-        val_sampler = SubsetRandomSampler(val_indices)
+        # Create subsets for train and validation
+        train_subset = Subset(combined_sequences, train_indices)
+        val_subset = Subset(combined_sequences, val_indices)
 
-        # Create DataLoaders
-        subset_train_loader = DataLoader(combined_sequences, batch_size=BATCH_SIZE, sampler=train_sampler, num_workers=PARALLEL_SPLIT_THREAD_COUNT)
-        subset_val_loader = DataLoader(combined_sequences, batch_size=BATCH_SIZE, sampler=val_sampler, num_workers=PARALLEL_SPLIT_THREAD_COUNT)
+        # Create DataLoaders for subsets
+        subset_train_loader = DataLoader(
+            train_subset, batch_size=BATCH_SIZE,
+            num_workers=PARALLEL_SPLIT_THREAD_COUNT,
+            pin_memory=True)
+        subset_val_loader = DataLoader(
+            val_subset, batch_size=BATCH_SIZE,
+            num_workers=PARALLEL_SPLIT_THREAD_COUNT,
+            pin_memory=True)
 
 # ==========================
 
