@@ -15,6 +15,7 @@ import pickle
 import numpy as np
 import logging
 from sklearn.model_selection import train_test_split
+from joblib import Parallel, delayed
 import torch.nn.functional as F
 
 # Set the current working directory using the constant from common.py
@@ -47,6 +48,27 @@ TRAINING_SUBSET_SIZE = get_setting_training_subset_size()
 LOSS_THRESHOLD = 1.0
 
 # ==========================
+
+def parallel_split(dataset, test_size, random_state):
+    """
+    Parallelized version of train_test_split for large datasets.
+    """
+    # Define the function to run train_test_split in parallel
+    def split_in_chunks(chunk):
+        return train_test_split(chunk, test_size=test_size, random_state=random_state)
+
+    # Split dataset into chunks for parallel processing
+    num_chunks = 4  # Number of threads/processes
+    chunk_size = len(dataset) // num_chunks
+    chunks = [dataset[i * chunk_size: (i + 1) * chunk_size] for i in range(num_chunks)]
+
+    # Apply train_test_split in parallel
+    results = Parallel(n_jobs=num_chunks)(delayed(split_in_chunks)(chunk) for chunk in chunks)
+
+    # Combine results
+    train_data = sum([r[0] for r in results], [])
+    test_data = sum([r[1] for r in results], [])
+    return train_data, test_data
 
 class Attention(nn.Module):
     """
@@ -467,11 +489,14 @@ if __name__ == "__main__":
 
         logger.info("Splitting data into train, test, and val sets...")
 
+        data_splitting_start_time = time.time()
+
         # Split data into training and temporary (validation + test)
-        subset_train_data, subset_non_train_data = train_test_split(subset_combined_sequences, test_size=NON_TRAIN_DATA_PROPORTION, random_state=RANDOM_SEED)
+        # Parallelized dataset splitting
+        subset_train_data, subset_non_train_data = parallel_split(subset_combined_sequences, test_size=0.2, random_state=RANDOM_SEED)
 
         # Further split the non-training dataset into validation and test sets
-        subset_val_data, subset_test_data = train_test_split(subset_non_train_data, test_size=0.5, random_state=RANDOM_SEED)
+        subset_val_data, subset_test_data = parallel_split(subset_non_train_data, test_size=0.5, random_state=RANDOM_SEED)
 
         # Unzip training, validation, and test datasets
         subset_train_inputs, subset_train_outputs = zip(*subset_train_data)
@@ -495,6 +520,11 @@ if __name__ == "__main__":
 
         subset_test_dataset = TensorDataset(subset_test_inputs, subset_test_outputs)
         subset_test_loader = DataLoader(subset_test_dataset, batch_size=BATCH_SIZE, shuffle=False, pin_memory=True, num_workers=4)
+
+        data_splitting_end_time = time.time()
+        data_splitting_duration_seconds = data_splitting_end_time - data_splitting_start_time
+        data_splitting_duration_hours_minutes_seconds = time.strftime('%H:%M:%S', time.gmtime(data_splitting_duration_seconds))
+        logger.info(f"Data splitting completed in {data_splitting_duration_hours_minutes_seconds}")
 
 # ==========================
 
