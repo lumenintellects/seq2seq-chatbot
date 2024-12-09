@@ -39,10 +39,13 @@ path_model = get_path_model(MODEL_NAME, MODEL_VERSION)
 # ==========================
 
 NON_TRAIN_DATA_PROPORTION = 0.2
+TEST_DATA_PROPORTION = 0.5
+
 RANDOM_SEED = 42
 
 PATIENCE_LEVEL = 5 # Number of epochs to wait for improvement before early stopping
 TORCH_THREAD_COUNT = 10
+PARALLEL_SPLIT_THREAD_COUNT = TORCH_THREAD_COUNT
 
 TRAINING_SUBSET_SIZE = get_setting_training_subset_size()
 LOSS_THRESHOLD = 1.0
@@ -58,7 +61,7 @@ def parallel_split(dataset, test_size, random_state):
         return train_test_split(chunk, test_size=test_size, random_state=random_state)
 
     # Split dataset into chunks for parallel processing
-    num_chunks = 4  # Number of threads/processes
+    num_chunks = PARALLEL_SPLIT_THREAD_COUNT  # Number of threads/processes
     chunk_size = len(dataset) // num_chunks
     chunks = [dataset[i * chunk_size: (i + 1) * chunk_size] for i in range(num_chunks)]
 
@@ -492,11 +495,12 @@ if __name__ == "__main__":
         data_splitting_start_time = time.time()
 
         # Split data into training and temporary (validation + test)
-        # Parallelized dataset splitting
-        subset_train_data, subset_non_train_data = parallel_split(subset_combined_sequences, test_size=0.2, random_state=RANDOM_SEED)
+        subset_train_data, subset_non_train_data = parallel_split(subset_combined_sequences, test_size=NON_TRAIN_DATA_PROPORTION, random_state=RANDOM_SEED)
+        logger.info(f"Subset split into Training and Non-training. Training subset size: {len(subset_train_data)}, Non-training subset size: {len(subset_non_train_data)}")
 
         # Further split the non-training dataset into validation and test sets
-        subset_val_data, subset_test_data = parallel_split(subset_non_train_data, test_size=0.5, random_state=RANDOM_SEED)
+        subset_val_data, subset_test_data = parallel_split(subset_non_train_data, test_size=TEST_DATA_PROPORTION, random_state=RANDOM_SEED)
+        logger.info(f"Non-training subset split into Validation and Test. Validation subset size: {len(subset_val_data)}, Test subset size: {len(subset_test_data)}")
 
         # Unzip training, validation, and test datasets
         subset_train_inputs, subset_train_outputs = zip(*subset_train_data)
