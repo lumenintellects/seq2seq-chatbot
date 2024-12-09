@@ -18,6 +18,7 @@ import logging
 from sklearn.model_selection import train_test_split
 from joblib import Parallel, delayed
 import torch.nn.functional as F
+from torch.utils.data import Dataset
 
 # Set the current working directory using the constant from common.py
 os.chdir(PATH_WORKSPACE_ROOT)
@@ -320,6 +321,20 @@ class Seq2SeqWithAttention(nn.Module):
         hidden = hidden[:, 0, :, :] + hidden[:, 1, :, :]
         return hidden
 
+class TupleDataset(Dataset):
+    """
+    A custom dataset to yield tuples of input and output sequences.
+    """
+    def __init__(self, input_data, output_data):
+        self.input_data = input_data
+        self.output_data = output_data
+
+    def __len__(self):
+        return len(self.input_data)
+
+    def __getitem__(self, idx):
+        return self.input_data[idx], self.output_data[idx]
+
 # ==========================
 
 if __name__ == "__main__":
@@ -361,49 +376,17 @@ if __name__ == "__main__":
         logger.error("Vocabulary file not found. Unable to proceed, exiting...")
         exit()
 
-    # Check for previous serialized padded input sequences matching batch file name pattern
-    if len(glob.glob(path_input_sequences_padded_batch_pattern)) > 0:
-        logger.info("Serialized padded input sequences found.")
-    else:
-        logger.error("Serialized padded input sequences not found. Unable to proceed, exiting...")
-        exit()
-
     padding_value = vocab["<pad>"]
-
-    # Check for previous serialized output sequences
-    if os.path.exists(path_output_sequences):
-        logger.info("Serialized output sequences found.")
-    else:
-        logger.error("Serialized output sequences not found. Unable to proceed, exiting...")
-        exit()
 
     matching_files_input = glob.glob(path_input_sequences_padded_batch_pattern)
     if len(matching_files_input) == 0:
         logger.error("No matching input files found. Unable to proceed, exiting...")
         exit()
-    elif len(matching_files_input) == 1:
-        input_sequences_padded = torch.load(matching_files_input[0], weights_only=True)
-        logger.info("Loaded input sequences from file.")
-    else:
-        input_sequences_padded = torch.cat([torch.load(file, weights_only=True) for file in matching_files_input], dim=0)
-        logger.info("Loaded input sequences from files.")
 
     matching_files_output = glob.glob(path_output_sequences_padded_batch_pattern)
     if len(matching_files_output) == 0:
         logger.error("No matching output files found. Unable to proceed, exiting...")
         exit()
-    elif len(matching_files_output) == 1:
-        output_sequences_padded = torch.load(matching_files_output[0], weights_only=True)
-        logger.info("Loaded output sequences from file.")
-    else:
-        output_sequences_padded = torch.cat([torch.load(file, weights_only=True) for file in matching_files_output], dim=0)
-        logger.info("Loaded output sequences from file.")
-
-    # ==========================
-
-    # Combine input and output sequences into a single list of pairs
-    combined_sequences = list(zip(input_sequences_padded, output_sequences_padded))
-    combined_indices = list(range(len(combined_sequences)))
 
     # ==========================
     # Instantiate Seq2Seq Model
@@ -433,7 +416,7 @@ if __name__ == "__main__":
 
     # Initialize attention mechanism
     attention = Attention(encoder_hidden_dim=ENCODER_HIDDEN_DIM, decoder_hidden_dim=DECODER_HIDDEN_DIM).to(device)
-    logger.info("Attention mechanism initialized with encoder hidden dimension of {ENCODER_HIDDEN_DIM} and decoder hidden dimension of {DECODER_HIDDEN_DIM}.")
+    logger.info(f"Attention mechanism initialized with encoder hidden dimension of {ENCODER_HIDDEN_DIM} and decoder hidden dimension of {DECODER_HIDDEN_DIM}.")
 
     # Initialize encoder
     encoder_with_attention = BidirectionalEncoderWithAttention(
@@ -485,30 +468,62 @@ if __name__ == "__main__":
 
 # ==========================
 
-        # Create a subset of the dataset for training
-        logger.info(f"Creating a subset of the dataset for training with size: {TRAINING_SUBSET_SIZE}")
-        subset_combined_sequences = random.sample(combined_sequences, TRAINING_SUBSET_SIZE)
+        # Randomly Select a Batch File
+        input_batch_files = glob.glob(path_input_sequences_padded_batch_pattern)
+        output_batch_files = glob.glob(path_output_sequences_padded_batch_pattern)
 
-        logger.info("Splitting data into train, test, and val sets...")
+        if not input_batch_files or not output_batch_files:
+            logger.error("No input or output batch files found. Unable to proceed, exiting...")
+            exit()
 
-        subset_dataset_size = len(subset_combined_sequences)
-        subset_indices = list(range(subset_dataset_size))
+        # Randomly select one batch file
+        selected_batch_idx = random.randint(0, len(input_batch_files) - 1)
+        input_batch_file = input_batch_files[selected_batch_idx]
+        output_batch_file = output_batch_files[selected_batch_idx]
 
-        # Compute the split sizes
+        logger.info(f"Selected batch file index: {selected_batch_idx}")
+        logger.info(f"Input batch file: {input_batch_file}")
+        logger.info(f"Output batch file: {output_batch_file}")
+
+        # Load the selected batch into memory
+        input_sequences_batch = torch.load(input_batch_file, weights_only=True)
+        logger.info(f"Input sequences batch loaded. Shape: {input_sequences_batch.shape}")
+        output_sequences_batch = torch.load(output_batch_file, weights_only=True)
+        logger.info(f"Output sequences batch loaded. Shape: {output_sequences_batch.shape}")
+
+        # Combine input and output sequences
+        combined_sequences = torch.cat((input_sequences_batch, output_sequences_batch), dim=1)
+        logger.info(f"Input and output sequences combined. Shape: {combined_sequences.shape}")
+
+        # ==========================
+        # Sample Subset from the Loaded Batch
+        batch_size = input_sequences_batch.shape[0]
+        if TRAINING_SUBSET_SIZE > batch_size:
+            logger.error(
+                f"Requested subset size ({TRAINING_SUBSET_SIZE}) exceeds batch size ({batch_size}). Reduce subset size or use multiple batches."
+            )
+            exit()
+
+        # Combine input and output sequences into a TupleDataset
         train_data_proportion = 1 - VAL_DATA_PROPORTION
-        train_val_split = int(np.floor(train_data_proportion*subset_dataset_size))  # 80% train, 20% validation
+        train_val_split = int(np.floor(train_data_proportion * TRAINING_SUBSET_SIZE))
 
-        # Shuffle the dataset indices
-        np.random.seed(RANDOM_SEED)
-        np.random.shuffle(subset_indices)
+        # Randomly sample indices within the selected batch
+        subset_indices = np.random.choice(input_sequences_batch.shape[0], size=TRAINING_SUBSET_SIZE, replace=False).tolist()
 
-        # Split the indices into train and validation
-        train_indices = subset_indices[:train_val_split]
-        val_indices = subset_indices[train_val_split:]
+        # Create input and output subsets using the sampled indices
+        input_subset = input_sequences_batch[subset_indices]
+        output_subset = output_sequences_batch[subset_indices]
 
-        # Create subsets for train and validation
-        train_subset = Subset(combined_sequences, train_indices)
-        val_subset = Subset(combined_sequences, val_indices)
+        # Split into train and validation subsets
+        train_input = input_subset[:train_val_split]
+        train_output = output_subset[:train_val_split]
+        val_input = input_subset[train_val_split:]
+        val_output = output_subset[train_val_split:]
+
+        # Create TupleDataset for train and validation
+        train_subset = TupleDataset(train_input, train_output)
+        val_subset = TupleDataset(val_input, val_output)
 
         # Create DataLoaders for subsets
         subset_train_loader = DataLoader(
