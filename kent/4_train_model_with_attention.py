@@ -43,7 +43,6 @@ RANDOM_SEED = 42
 PATIENCE_LEVEL = 5 # Number of epochs to wait for improvement before early stopping
 TORCH_THREAD_COUNT = 10
 
-BATCH_SIZE = 500000
 TRAINING_SUBSET_SIZE = get_setting_training_subset_size()
 LOSS_THRESHOLD = 1.0
 
@@ -394,8 +393,7 @@ if __name__ == "__main__":
     DECODER_HIDDEN_DIM = ENCODER_HIDDEN_DIM # using the same hidden dimension for encoder and decoder
     N_LAYERS = 2
     DROPOUT = 0.5
-    BATCH_SIZE = 16
-    num_epochs = 10
+    BATCH_SIZE = 8
 
     # Check GPU Availability
     logger.info("Checking GPU availability...")
