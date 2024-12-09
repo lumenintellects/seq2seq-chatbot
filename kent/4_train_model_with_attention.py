@@ -56,29 +56,37 @@ class Attention(nn.Module):
 
     def __init__(self, encoder_hidden_dim, decoder_hidden_dim):
         super().__init__()
-        # Project to a common dimension
-        input_features = encoder_hidden_dim + decoder_hidden_dim
-        self.attn = nn.Linear(input_features, decoder_hidden_dim)
+        # Adjust Linear layer input dimension to match concatenated dimensions
+        self.attn = nn.Linear((encoder_hidden_dim * 2) + decoder_hidden_dim, decoder_hidden_dim)
         self.v = nn.Linear(decoder_hidden_dim, 1, bias=False)
 
     def forward(self, hidden, encoder_outputs, mask=None):
-        # hidden: [batch_size, decoder_hidden_dim]
-        # encoder_outputs: [batch_size, src_len, encoder_hidden_dim]
-
+        """
+        Compute attention weights.
+        Args:
+            hidden: [batch_size, decoder_hidden_dim] - Decoder's last hidden state.
+            encoder_outputs: [batch_size, src_len, encoder_hidden_dim * 2] - All encoder outputs.
+            mask: [batch_size, src_len] - Optional padding mask.
+        Returns:
+            attention: [batch_size, src_len] - Normalized attention scores.
+        """
         batch_size = encoder_outputs.shape[0]
         src_len = encoder_outputs.shape[1]
 
-        # Project the encoder outputs and decoder hidden state
+        # Repeat decoder hidden state `src_len` times to match encoder outputs
         hidden = hidden.unsqueeze(1).repeat(1, src_len, 1)  # [batch_size, src_len, decoder_hidden_dim]
-        encoder_outputs = encoder_outputs  # [batch_size, src_len, encoder_hidden_dim]
 
-        # Concatenate and compute energies
+        # Concatenate hidden state with encoder outputs
         energy = torch.tanh(self.attn(torch.cat((hidden, encoder_outputs), dim=2)))  # [batch_size, src_len, decoder_hidden_dim]
+
+        # Project energy down to a single attention score per time step
         attention = self.v(energy).squeeze(2)  # [batch_size, src_len]
 
+        # Apply mask if provided (optional)
         if mask is not None:
             attention = attention.masked_fill(mask == 0, -1e10)
 
+        # Normalize scores
         return F.softmax(attention, dim=1)  # [batch_size, src_len]
 
 class BidirectionalEncoderWithAttention(nn.Module):
