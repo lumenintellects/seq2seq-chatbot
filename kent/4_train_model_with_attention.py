@@ -10,7 +10,7 @@ from common import get_path_input_sequences_padded_batch_pattern, get_path_outpu
 from common import get_path_model
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader, TensorDataset, SubsetRandomSampler
 import pickle
 import numpy as np
 import logging
@@ -38,8 +38,8 @@ path_model = get_path_model(MODEL_NAME, MODEL_VERSION)
 
 # ==========================
 
-NON_TRAIN_DATA_PROPORTION = 0.2
-TEST_DATA_PROPORTION = 0.5
+NON_TRAIN_DATA_PROPORTION = 0.5
+TEST_DATA_PROPORTION = 0.2
 
 RANDOM_SEED = 42
 
@@ -494,36 +494,26 @@ if __name__ == "__main__":
 
         data_splitting_start_time = time.time()
 
-        # Split data into training and temporary (validation + test)
-        subset_train_data, subset_non_train_data = parallel_split(subset_combined_sequences, test_size=NON_TRAIN_DATA_PROPORTION, random_state=RANDOM_SEED)
-        logger.info(f"Subset split into Training and Non-training. Training subset size: {len(subset_train_data)}, Non-training subset size: {len(subset_non_train_data)}")
+        subset_dataset_size = len(subset_combined_sequences)
+        subset_indices = list(range(subset_dataset_size))
+        train_non_train_split = int(np.floor(NON_TRAIN_DATA_PROPORTION * subset_dataset_size))  # portion for test and validation
 
-        # Further split the non-training dataset into validation and test sets
-        subset_val_data, subset_test_data = parallel_split(subset_non_train_data, test_size=TEST_DATA_PROPORTION, random_state=RANDOM_SEED)
-        logger.info(f"Non-training subset split into Validation and Test. Validation subset size: {len(subset_val_data)}, Test subset size: {len(subset_test_data)}")
+        # Shuffle the dataset
+        np.random.seed(RANDOM_SEED)
+        np.random.shuffle(subset_indices)
 
-        # Unzip training, validation, and test datasets
-        subset_train_inputs, subset_train_outputs = zip(*subset_train_data)
-        subset_val_inputs, subset_val_outputs = zip(*subset_val_data)
-        subset_test_inputs, subset_test_outputs = zip(*subset_test_data)
+        # Split indices
+        train_indices, non_train_indices = subset_indices[train_non_train_split:], subset_indices[:train_non_train_split]
+        val_indices, test_indices = non_train_indices[:len(non_train_indices) // 2], non_train_indices[len(non_train_indices) // 2:]
 
-        # Convert back to torch tensors
-        subset_train_inputs = torch.stack(subset_train_inputs)
-        subset_train_outputs = torch.stack(subset_train_outputs)
-        subset_val_inputs = torch.stack(subset_val_inputs)
-        subset_val_outputs = torch.stack(subset_val_outputs)
-        subset_test_inputs = torch.stack(subset_test_inputs)
-        subset_test_outputs = torch.stack(subset_test_outputs)
+        # Define samplers
+        train_sampler = SubsetRandomSampler(train_indices)
+        val_sampler = SubsetRandomSampler(val_indices)
+        test_sampler = SubsetRandomSampler(test_indices)
 
         # Create DataLoaders
-        subset_train_dataset = TensorDataset(subset_train_inputs, subset_train_outputs)
-        subset_train_loader = DataLoader(subset_train_dataset, batch_size=BATCH_SIZE, shuffle=True, pin_memory=True, num_workers=4)
-
-        subset_val_dataset = TensorDataset(subset_val_inputs, subset_val_outputs)
-        subset_val_loader = DataLoader(subset_val_dataset, batch_size=BATCH_SIZE, shuffle=False, pin_memory=True, num_workers=4)
-
-        subset_test_dataset = TensorDataset(subset_test_inputs, subset_test_outputs)
-        subset_test_loader = DataLoader(subset_test_dataset, batch_size=BATCH_SIZE, shuffle=False, pin_memory=True, num_workers=4)
+        subset_train_loader = DataLoader(combined_sequences, batch_size=BATCH_SIZE, sampler=train_sampler, num_workers=PARALLEL_SPLIT_THREAD_COUNT)
+        subset_val_loader = DataLoader(combined_sequences, batch_size=BATCH_SIZE, sampler=val_sampler, num_workers=PARALLEL_SPLIT_THREAD_COUNT)
 
         data_splitting_end_time = time.time()
         data_splitting_duration_seconds = data_splitting_end_time - data_splitting_start_time
