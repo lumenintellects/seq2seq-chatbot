@@ -21,9 +21,9 @@ import torch.nn.functional as F
 os.chdir(PATH_WORKSPACE_ROOT)
 
 LOG_BASE_FILENAME = "4_train_model_with_attention"
-DATASET_NAME = 'ubuntu_dialogue_corpus_sample'
+DATASET_NAME = 'ubuntu_dialogue_corpus_000'
 MODEL_NAME = 'seq2seq_attention'
-MODEL_VERSION = '0.0'
+MODEL_VERSION = '1.0'
 
 path_input_csv = get_path_input_output_pairs(DATASET_NAME)
 path_vocab_pkl = get_path_vocab(DATASET_NAME)
@@ -247,35 +247,34 @@ class Seq2SeqWithAttention(nn.Module):
 
     def forward(self, src, trg, teacher_forcing_ratio=0.5):
         """
-        Forward pass for the Seq2Seq model with attention.
-
         Args:
-            src (Tensor): Source input sequences [batch_size, src_len].
-            trg (Tensor): Target input sequences [batch_size, trg_len].
-            teacher_forcing_ratio (float): Probability to use teacher forcing.
-
+            src: Source input sequence [batch_size, src_len]
+            trg: Target input sequence [batch_size, trg_len]
+            teacher_forcing_ratio: Probability of using teacher forcing
         Returns:
-            outputs (Tensor): Decoder outputs [batch_size, trg_len, output_dim].
+            outputs: Predictions [batch_size, trg_len, output_dim]
         """
-        # Get input dimensions
         batch_size = trg.shape[0]
         trg_len = trg.shape[1]
-        trg_vocab_size = self.decoder.output_dim
+        output_dim = self.decoder.output_dim
 
         # Initialize tensor to store decoder outputs
-        outputs = torch.zeros(batch_size, trg_len, trg_vocab_size).to(self.device)
+        outputs = torch.zeros(batch_size, trg_len, output_dim).to(self.device)
 
-        # Pass source through encoder
+        # Encode the source sequence
         encoder_outputs, hidden = self.encoder(src)
 
-        # Initialize the first input as the <BOS> token
+        # Prepare hidden state for the decoder (handle bidirectionality)
+        hidden = self._transform_hidden(hidden)
+
+        # First input to the decoder is the <bos> token
         input = trg[:, 0]
 
         for t in range(1, trg_len):
-            # Decode using attention
+            # Decode the next token
             output, hidden = self.decoder(input, hidden, encoder_outputs)
 
-            # Store the output
+            # Store prediction
             outputs[:, t, :] = output
 
             # Decide whether to use teacher forcing
@@ -283,6 +282,19 @@ class Seq2SeqWithAttention(nn.Module):
             input = trg[:, t] if teacher_force else output.argmax(1)
 
         return outputs
+
+    def _transform_hidden(self, hidden):
+        """
+        Transforms bidirectional encoder hidden state to match decoder requirements.
+        Args:
+            hidden: [n_layers * 2, batch_size, hidden_dim]
+        Returns:
+            hidden: [n_layers, batch_size, hidden_dim]
+        """
+        # Sum forward and backward hidden states for each layer
+        hidden = hidden.view(self.encoder.n_layers, 2, hidden.size(1), hidden.size(2))
+        hidden = hidden[:, 0, :, :] + hidden[:, 1, :, :]
+        return hidden
 
 # ==========================
 
