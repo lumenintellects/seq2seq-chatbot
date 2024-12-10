@@ -165,7 +165,6 @@ def generate_response_beam_search(model, input_text, vocab, device, max_length=5
 
         return " ".join(response_tokens)
 
-
 def chatbot_interface(model, vocab, device):
     """
     Start a simple chatbot interface.
