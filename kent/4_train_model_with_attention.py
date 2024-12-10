@@ -378,7 +378,7 @@ if __name__ == "__main__":
     DECODER_HIDDEN_DIM = ENCODER_HIDDEN_DIM # using the same hidden dimension for encoder and decoder
     N_LAYERS = 2
     DROPOUT = 0.5
-    BATCH_SIZE = 64
+    BATCH_SIZE = 32
 
     # Check GPU Availability
     logger.info("Checking GPU availability...")
@@ -486,6 +486,7 @@ if __name__ == "__main__":
         train_val_split = int(np.floor(train_data_proportion * TRAINING_SUBSET_SIZE))
 
         # Randomly sample indices within the selected batch
+        logger.info(f"Sampling {TRAINING_SUBSET_SIZE} indices from the batch...")
         subset_indices = np.random.choice(input_sequences_batch.shape[0], size=TRAINING_SUBSET_SIZE, replace=False).tolist()
 
         # Create input and output subsets using the sampled indices
