@@ -118,33 +118,36 @@ def generate_response_beam_search(model, input_text, vocab, device, max_length=5
         # Tokenize and convert input to indices
         tokens = ["<bos>"] + input_text.split() + ["<eos>"]
         input_indices = [vocab.get(token, vocab["<unk>"]) for token in tokens]
-        input_tensor = torch.tensor(input_indices, dtype=torch.long).unsqueeze(0).to(device)
+        input_tensor = torch.tensor(input_indices, dtype=torch.long).unsqueeze(0).to(device)  # (1, seq_len)
 
         # Encode the input
         encoder_outputs, hidden = model.encoder(input_tensor)
 
-        # Reshape hidden state if needed
-        if hidden.dim() == 2:
-            hidden = hidden.unsqueeze(0)  # Add n_layers dimension
+        # Adjust hidden state to match decoder's n_layers
+        if hidden.size(0) == 1:  # If the encoder is single-layer
+            hidden = hidden.repeat(model.decoder.rnn.num_layers, 1, 1)  # Repeat for n_layers
 
-        # Initialize beams
-        beams = [([vocab["<bos>"]], 0.0, hidden)]  # List of (sequence, score, hidden state)
+        # Initialize beams: Each beam is a tuple (sequence, score, hidden)
+        beams = [([vocab["<bos>"]], 0.0, hidden)]  # Start with the <bos> token and score 0.0
 
         for _ in range(max_length):
-            all_candidates = []
+            all_candidates = []  # To store all beam expansions
+
             for seq, score, hidden in beams:
-                # Get the last token in the sequence
-                trg_tensor = torch.tensor([seq[-1]], dtype=torch.long).unsqueeze(0).to(device)
+                # Prepare decoder input for the last token in the sequence
+                trg_tensor = torch.tensor([[seq[-1]]], dtype=torch.long).to(device)  # (1, 1)
 
                 # Decode the next token
-                decoder_output, hidden = model.decoder(trg_tensor, hidden)
-                log_probs = torch.log_softmax(decoder_output.squeeze(1), dim=-1)  # Ensure 1D log_probs
+                predictions, hidden = model.decoder(trg_tensor, hidden)
+
+                # Get log probabilities
+                log_probs = torch.log_softmax(predictions.squeeze(0), dim=-1)  # (1, vocab_size)
 
                 # Expand each beam with top beam_width tokens
                 top_tokens = torch.topk(log_probs, beam_width)
                 for i in range(beam_width):
-                    next_token = top_tokens.indices[i].item()
-                    next_score = score + top_tokens.values[i].item()
+                    next_token = top_tokens.indices[0, i].item()
+                    next_score = score + top_tokens.values[0, i].item()  # Accumulate log-probabilities
                     all_candidates.append((seq + [next_token], next_score, hidden))
 
             # Prune to the top beam_width candidates
@@ -155,7 +158,7 @@ def generate_response_beam_search(model, input_text, vocab, device, max_length=5
                 break
 
         # Select the best beam (highest score)
-        best_sequence = beams[0][0]
+        best_sequence = beams[0][0]  # Sequence with the highest score
 
         # Convert indices back to tokens
         idx_to_word = {idx: token for token, idx in vocab.items()}
