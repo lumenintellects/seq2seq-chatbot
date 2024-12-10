@@ -154,7 +154,6 @@ if __name__ == "__main__":
     path_input_csv = get_path_input_output_pairs(DATASET_NAME)
     path_vocab_pkl = get_path_vocab(DATASET_NAME)
     path_input_sequences = get_path_input_sequences(DATASET_NAME)
-    path_output_sequences = get_path_output_sequences(DATASET_NAME)
     path_input_sequences_padded_batch_pattern = get_path_input_sequences_padded_batch_pattern(DATASET_NAME)
     path_output_sequences_padded_batch_pattern = get_path_output_sequences_padded_batch_pattern(DATASET_NAME)
 
@@ -181,13 +180,6 @@ if __name__ == "__main__":
         exit()
 
     padding_value = vocab["<pad>"]
-
-    # Check for previous serialized output sequences
-    if os.path.exists(path_output_sequences):
-        logger.info("Serialized output sequences found.")
-    else:
-        logger.error("Serialized output sequences not found. Unable to proceed, exiting...")
-        exit()
 
     input_sequences_padded = torch.cat([torch.load(file, weights_only=True) for file in glob.glob(path_input_sequences_padded_batch_pattern)], dim=0)
     logger.info("Loaded input sequences from files.")
