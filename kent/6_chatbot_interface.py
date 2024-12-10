@@ -123,6 +123,10 @@ def generate_response_beam_search(model, input_text, vocab, device, max_length=5
         # Encode the input
         encoder_outputs, hidden = model.encoder(input_tensor)
 
+        # Reshape hidden state if needed
+        if hidden.dim() == 2:
+            hidden = hidden.unsqueeze(0)  # Add n_layers dimension
+
         # Initialize beams
         beams = [([vocab["<bos>"]], 0.0, hidden)]  # List of (sequence, score, hidden state)
 
@@ -132,9 +136,9 @@ def generate_response_beam_search(model, input_text, vocab, device, max_length=5
                 # Get the last token in the sequence
                 trg_tensor = torch.tensor([seq[-1]], dtype=torch.long).unsqueeze(0).to(device)
 
-                # Decode next token
-                output, hidden = model.decoder(trg_tensor, hidden, encoder_outputs)
-                log_probs = torch.log_softmax(output, dim=-1).squeeze(0)
+                # Decode the next token
+                decoder_output, hidden = model.decoder(trg_tensor, hidden)
+                log_probs = torch.log_softmax(decoder_output.squeeze(1), dim=-1)  # Ensure 1D log_probs
 
                 # Expand each beam with top beam_width tokens
                 top_tokens = torch.topk(log_probs, beam_width)
@@ -182,7 +186,7 @@ def chatbot_interface(model, vocab, device):
         # Generate response
         preprocessed_input = preprocess_input(user_input)
         logger.info(f"Preprocessed Input: {preprocessed_input}")
-        response = generate_response(model, preprocessed_input, vocab, device)
+        response = generate_response_beam_search(model, preprocessed_input, vocab, device)
         logger.info(f"Chatbot: {response}")
 
 def preprocess_input(text):
