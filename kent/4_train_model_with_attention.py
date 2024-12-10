@@ -53,27 +53,6 @@ LOSS_THRESHOLD = 1.0
 
 # ==========================
 
-def parallel_split(dataset, test_size, random_state):
-    """
-    Parallelized version of train_test_split for large datasets.
-    """
-    # Define the function to run train_test_split in parallel
-    def split_in_chunks(chunk):
-        return train_test_split(chunk, test_size=test_size, random_state=random_state)
-
-    # Split dataset into chunks for parallel processing
-    num_chunks = PARALLEL_SPLIT_THREAD_COUNT  # Number of threads/processes
-    chunk_size = len(dataset) // num_chunks
-    chunks = [dataset[i * chunk_size: (i + 1) * chunk_size] for i in range(num_chunks)]
-
-    # Apply train_test_split in parallel
-    results = Parallel(n_jobs=num_chunks)(delayed(split_in_chunks)(chunk) for chunk in chunks)
-
-    # Combine results
-    train_data = sum([r[0] for r in results], [])
-    test_data = sum([r[1] for r in results], [])
-    return train_data, test_data
-
 class Attention(nn.Module):
     """
     Attention mechanism to compute attention weights.
