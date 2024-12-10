@@ -378,7 +378,7 @@ if __name__ == "__main__":
     DECODER_HIDDEN_DIM = ENCODER_HIDDEN_DIM # using the same hidden dimension for encoder and decoder
     N_LAYERS = 2
     DROPOUT = 0.5
-    BATCH_SIZE = 4
+    BATCH_SIZE = 64
 
     # Check GPU Availability
     logger.info("Checking GPU availability...")
@@ -500,7 +500,10 @@ if __name__ == "__main__":
 
         # Create TupleDataset for train and validation
         train_subset = TupleDataset(train_input, train_output)
+        logger.info(f"Train subset created. Shape: {train_input.shape}")
+
         val_subset = TupleDataset(val_input, val_output)
+        logger.info(f"Validation subset created. Shape: {val_input.shape}")
 
         # Create DataLoaders for subsets
         subset_train_loader = DataLoader(
@@ -584,6 +587,10 @@ if __name__ == "__main__":
                   logger.info(f"Early stopping triggered after {PATIENCE_LEVEL} epochs with no improvement.")
                   continue_training = get_setting_next_subset_continue()
                   break
+
+        if epoch_number == 0:
+            logger.error("No epochs completed. Exiting...")
+            exit()
 
         iteration_end_time = time.time()
         iteration_time_training_loop = iteration_end_time - iteration_start_time
