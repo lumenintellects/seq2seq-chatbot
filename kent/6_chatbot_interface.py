@@ -104,6 +104,68 @@ def generate_response(model, input_text, vocab, device, max_length=50):
 
     return response
 
+def generate_response_beam_search(model, input_text, vocab, device, max_length=50, beam_width=3):
+    """
+    Generate a response using beam search decoding.
+
+    Args:
+        model: Trained Seq2Seq model.
+        input_text: User input text string.
+        vocab: Vocabulary mapping tokens to indices.
+        device: The device (CPU/GPU) to use.
+        max_length: Maximum length of the generated response.
+        beam_width: Number of beams to keep at each step.
+
+    Returns:
+        response: Generated response as a string.
+    """
+    model.eval()
+    with torch.no_grad():
+        # Tokenize and convert input to indices
+        tokens = ["<bos>"] + input_text.split() + ["<eos>"]
+        input_indices = [vocab.get(token, vocab["<unk>"]) for token in tokens]
+        input_tensor = torch.tensor(input_indices, dtype=torch.long).unsqueeze(0).to(device)
+
+        # Encode the input
+        encoder_outputs, hidden = model.encoder(input_tensor)
+
+        # Initialize beams
+        beams = [([vocab["<bos>"]], 0.0, hidden)]  # List of (sequence, score, hidden state)
+
+        for _ in range(max_length):
+            all_candidates = []
+            for seq, score, hidden in beams:
+                # Get the last token in the sequence
+                trg_tensor = torch.tensor([seq[-1]], dtype=torch.long).unsqueeze(0).to(device)
+
+                # Decode next token
+                output, hidden = model.decoder(trg_tensor, hidden, encoder_outputs)
+                log_probs = torch.log_softmax(output, dim=-1).squeeze(0)
+
+                # Expand each beam with top beam_width tokens
+                top_tokens = torch.topk(log_probs, beam_width)
+                for i in range(beam_width):
+                    next_token = top_tokens.indices[i].item()
+                    next_score = score + top_tokens.values[i].item()
+                    all_candidates.append((seq + [next_token], next_score, hidden))
+
+            # Prune to the top beam_width candidates
+            beams = sorted(all_candidates, key=lambda x: x[1], reverse=True)[:beam_width]
+
+            # Stop if all beams end with <eos>
+            if all(seq[-1] == vocab["<eos>"] for seq, _, _ in beams):
+                break
+
+        # Select the best beam (highest score)
+        best_sequence = beams[0][0]
+
+        # Convert indices back to tokens
+        idx_to_word = {idx: token for token, idx in vocab.items()}
+        response_tokens = [idx_to_word[idx] for idx in best_sequence if idx not in {vocab["<bos>"], vocab["<eos>"]}]
+
+        return " ".join(response_tokens)
+
+
 def chatbot_interface(model, vocab, device):
     """
     Start a simple chatbot interface.
