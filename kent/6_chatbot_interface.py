@@ -58,39 +58,33 @@ def load_latest_model_state(model, path_model, logger):
         return False
 
 def generate_response(model, input_text, vocab, device, max_length=50):
-    """
-    Generate a response for the given input_text using the Seq2Seq model.
-
-    Args:
-        model: Trained Seq2Seq model.
-        input_text: User input text string.
-        vocab: Vocabulary mapping tokens to indices.
-        device: The device (CPU/GPU) to use.
-        max_length: Maximum length of the generated response.
-
-    Returns:
-        response: Generated response as a string.
-    """
     model.eval()
     with torch.no_grad():
         # Tokenize and convert input to indices
         tokens = ["<bos>"] + input_text.split() + ["<eos>"]
         input_indices = [vocab.get(token, vocab["<unk>"]) for token in tokens]
-        input_tensor = torch.tensor(input_indices, dtype=torch.long).unsqueeze(0).to(device)
+        input_tensor = torch.tensor(input_indices, dtype=torch.long).unsqueeze(0).to(device)  # (1, seq_len)
 
         # Encode the input
         encoder_outputs, hidden = model.encoder(input_tensor)
 
+        # Adjust hidden state to match decoder's n_layers
+        if hidden.size(0) == 1:  # If the encoder is single-layer
+            hidden = hidden.repeat(model.decoder.rnn.num_layers, 1, 1)  # Repeat for n_layers
+
         # Prepare decoder input (<bos> token)
         trg_idx = vocab["<bos>"]
-        trg_tensor = torch.tensor([trg_idx], dtype=torch.long).unsqueeze(0).to(device)
+        trg_tensor = torch.tensor([[trg_idx]], dtype=torch.long).to(device)  # (1, 1)
 
         # Generate response
         response_tokens = []
         for _ in range(max_length):
-            output, hidden = model.decoder(trg_tensor, hidden, encoder_outputs)
-            trg_idx = output.argmax(2).item()  # Get the predicted token index
-            trg_tensor = torch.tensor([[trg_idx]], dtype=torch.long).to(device)
+            # Call the decoder
+            predictions, hidden = model.decoder(trg_tensor, hidden)
+
+            # Get the predicted token (argmax over vocabulary)
+            trg_idx = predictions.squeeze(0).argmax(1).item()  # Squeeze batch size, get token index
+            trg_tensor = torch.tensor([[trg_idx]], dtype=torch.long).to(device)  # Prepare input for next step
 
             # Stop if <eos> is generated
             if trg_idx == vocab["<eos>"]:
