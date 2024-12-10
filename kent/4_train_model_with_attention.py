@@ -11,12 +11,10 @@ from common import get_path_input_sequences_padded_batch_pattern, get_path_outpu
 from common import get_path_model
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, Subset
+from torch.utils.data import DataLoader
 import pickle
 import numpy as np
 import logging
-from sklearn.model_selection import train_test_split
-from joblib import Parallel, delayed
 import torch.nn.functional as F
 from torch.utils.data import Dataset
 
