@@ -44,7 +44,7 @@ VAL_DATA_PROPORTION = 0.2
 
 RANDOM_SEED = 42
 
-PATIENCE_LEVEL = 5 # Number of epochs to wait for improvement before early stopping
+PATIENCE_LEVEL = 2 # Number of epochs to wait for improvement before early stopping
 TORCH_THREAD_COUNT = 10
 PARALLEL_SPLIT_THREAD_COUNT = 0
 
