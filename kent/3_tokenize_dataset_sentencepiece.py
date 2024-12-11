@@ -2,6 +2,7 @@ import glob
 import os
 import time
 import logging
+import numpy as np
 import pandas as pd
 import sentencepiece as sp
 from common import COL_INPUT, COL_OUTPUT, EMPTY_STRING, FILE_MODE_APPEND, FILE_MODE_WRITE, FOLDER_DATASET, PATH_WORKSPACE_ROOT, VOCAB_BOS, VOCAB_EOS, VOCAB_PAD, VOCAB_UNK, get_base_filename_sentencepiece_model, get_path_input_sequences, get_path_input_sequences_padded_batch, get_path_input_sequences_padded_batch_pattern, get_path_log, get_path_input_output_pairs, get_path_output_sequences, get_path_output_sequences_padded_batch, get_path_output_sequences_padded_batch_pattern, get_path_sentencepiece_combined_text, get_path_sentencepiece_model
