@@ -237,6 +237,7 @@ if __name__ == "__main__":
             has_val_loss_improved = val_loss < best_val_loss
             if has_val_loss_improved:
                 best_val_loss = val_loss
+                logger.info(f"Best validation loss improved to {best_val_loss:.3f}.")
 
                 torch.save(model.state_dict(), path_model)
                 logger.info("Model state saved.")
