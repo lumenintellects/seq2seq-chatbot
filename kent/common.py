@@ -1,21 +1,63 @@
 import json
 import os
 import pandas as pd
-import torch
 import torch.nn as nn
+from torch.utils.data import Dataset
 
-PATH_WORKSPACE_ROOT = r'.' # Set the workspace root path here
+PATH_WORKSPACE_ROOT = r'D:\git\github\seq2seq-chatbot\kent' # Set the workspace root path here
 FOLDER_DATASET = 'dataset' # Set the name of the folder containing the datasets here
 FOLDER_LOG = FOLDER_DATASET # Set the name of the folder containing the log files here
 
+COL_INPUT = 'input'
+COL_OUTPUT = 'output'
+
+EMPTY_STRING = ''
+
+FILE_MODE_WRITE = 'w'
+FILE_MODE_READ = 'r'
+FILE_MODE_APPEND = 'a'
+FILE_MODE_READ_BINARY = 'rb'
+FILE_MODE_WRITE_BINARY = 'wb'
+
+VOCAB_PAD = '<pad>' # Padding token
+VOCAB_UNK = '<unk>' # Unknown token
+VOCAB_BOS = '<bos>' # Beginning of sentence
+VOCAB_EOS = '<eos>' # End of sentence
+
+EXTENSION_TXT = '.txt'
 EXTENSION_CSV = '.csv'
 EXTENSION_PT = '.pt'
 EXTENSION_PKL = '.pkl'
 EXTENSION_JSON = '.json'
 EXTENSION_LOG = '.log'
 EXTENSION_PTH = '.pth'
+EXTENSION_MODEL = '.model'
 
 FILE_NAME_DELIMITER = '_'
+
+def to_model_filename(name):
+    """
+    Create a model filename with the given name.
+
+    Parameters:
+        name (str): The name of the model file.
+
+    Returns:
+        str: The full path to the model file.
+    """
+    return f"{name}{EXTENSION_MODEL}"
+
+def to_txt_filename(name):
+    """
+    Create a TXT filename with the given name.
+
+    Parameters:
+        name (str): The name of the TXT file.
+
+    Returns:
+        str: The full path to the TXT file.
+    """
+    return f"{name}{EXTENSION_TXT}"
 
 def to_csv_filename(name):
     """
@@ -110,6 +152,48 @@ NAME_TOKEN_VOCAB = 'vocab'
 NAME_TOKEN_SEQ = 'seq'
 NAME_TOKEN_PADDED = 'padded'
 NAME_TOKEN_BATCH = 'batch'
+NAME_TOKEN_INPUT_OUTPUT_PAIRS_COMBINED = 'input_output_pairs_combined'
+NAME_TOKEN_SENTENCEPIECE = 'sentencepiece'
+
+def get_base_filename_sentencepiece_model(dataset_name):
+    """
+    Get the base filename for the SentencePiece model file.
+
+    Parameters:
+        dataset_name (str): The name of the dataset.
+
+    Returns:
+        str: The base filename for the SentencePiece model file.
+    """
+    return compose_filename(dataset_name, [NAME_TOKEN_SENTENCEPIECE])
+
+def get_path_sentencepiece_model(dataset_name):
+    """
+    Get the path to the SentencePiece model file.
+
+    Parameters:
+        base (str): The base filename.
+
+    Returns:
+        str: The path to the SentencePiece model file.
+    """
+    base_filename = get_base_filename_sentencepiece_model(dataset_name)
+    model_filename = to_model_filename(base_filename)
+    return os.path.join(FOLDER_DATASET, model_filename)
+
+def get_path_sentencepiece_combined_text(dataset_name):
+    """
+    Get the path to the combined text file for SentencePiece training.
+
+    Parameters:
+        dataset_name (str): The name of the dataset.
+
+    Returns:
+        str: The path to the combined text file.
+    """
+    base_filename = compose_filename(dataset_name, [NAME_TOKEN_INPUT_OUTPUT_PAIRS_COMBINED])
+    txt_filename = to_txt_filename(base_filename)
+    return os.path.join(FOLDER_DATASET, txt_filename)
 
 def get_path_log(base, dataset_name, timestamp_token):
     """
@@ -281,6 +365,20 @@ def get_path_model(base, version):
     base_filename = compose_filename(base, [version])
     pth_filename = to_pth_filename(base_filename)
     return os.path.join(FOLDER_DATASET, pth_filename)
+
+class TupleDataset(Dataset):
+    """
+    A custom dataset to yield tuples of input and output sequences.
+    """
+    def __init__(self, input_data, output_data):
+        self.input_data = input_data
+        self.output_data = output_data
+
+    def __len__(self):
+        return len(self.input_data)
+
+    def __getitem__(self, idx):
+        return self.input_data[idx], self.output_data[idx]
 
 MODE_READONLY = 'r'
 

@@ -3,7 +3,7 @@ import os
 import random
 import time
 import sentencepiece as sp
-from common import PATH_WORKSPACE_ROOT, VOCAB_PAD, get_path_sentencepiece_model, get_setting_training_loop_continue, get_setting_next_subset_continue
+from common import PATH_WORKSPACE_ROOT, VOCAB_PAD, TupleDataset, get_path_sentencepiece_model, get_setting_training_loop_continue, get_setting_next_subset_continue
 from common import get_setting_training_subset_size
 from common import PATH_WORKSPACE_ROOT, get_path_log, get_path_input_output_pairs, get_path_vocab
 from common import get_path_input_sequences, get_path_output_sequences
@@ -12,11 +12,8 @@ from common import get_path_model
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-import pickle
-import numpy as np
 import logging
 import torch.nn.functional as F
-from torch.utils.data import Dataset
 
 # Set the current working directory using the constant from common.py
 os.chdir(PATH_WORKSPACE_ROOT)
@@ -30,14 +27,12 @@ VAL_DATA_PROPORTION = 0.2
 RANDOM_SEED = 42
 PATIENCE_LEVEL = 2 # Number of epochs to wait for improvement before early stopping
 TORCH_THREAD_COUNT = 10
-PARALLEL_SPLIT_THREAD_COUNT = 0
 TRAINING_SUBSET_SIZE = get_setting_training_subset_size()
 LOSS_THRESHOLD = 1.0
 
 # ==========================
 
 path_input_csv = get_path_input_output_pairs(DATASET_NAME)
-path_vocab_pkl = get_path_vocab(DATASET_NAME)
 path_input_sequences = get_path_input_sequences(DATASET_NAME)
 path_output_sequences = get_path_output_sequences(DATASET_NAME)
 path_input_sequences_padded_batch_pattern = get_path_input_sequences_padded_batch_pattern(DATASET_NAME)
@@ -49,7 +44,6 @@ path_sentencepiece_model = get_path_sentencepiece_model(DATASET_NAME)
 path_model = get_path_model(MODEL_NAME, MODEL_VERSION)
 
 # ==========================
-
 
 class Attention(nn.Module):
     """
@@ -298,20 +292,6 @@ class Seq2SeqWithAttention(nn.Module):
         hidden = hidden[:, 0, :, :] + hidden[:, 1, :, :]
         return hidden
 
-class TupleDataset(Dataset):
-    """
-    A custom dataset to yield tuples of input and output sequences.
-    """
-    def __init__(self, input_data, output_data):
-        self.input_data = input_data
-        self.output_data = output_data
-
-    def __len__(self):
-        return len(self.input_data)
-
-    def __getitem__(self, idx):
-        return self.input_data[idx], self.output_data[idx]
-
 # ==========================
 
 if __name__ == "__main__":
@@ -346,18 +326,6 @@ if __name__ == "__main__":
         exit()
 
     # ==========================
-
-    # Define special token IDs
-    pad_id = sp_model.pad_id() if sp_model.pad_id() >= 0 else None
-    unk_id = sp_model.unk_id()
-    bos_id = sp_model.bos_id()
-    eos_id = sp_model.eos_id()
-
-    if pad_id is None:
-        logger.error("SentencePiece model does not define a <pad> token. Exiting...")
-        exit()
-
-    logger.info(f"Special tokens: <pad>: {pad_id}, <unk>: {unk_id}, <bos>: {bos_id}, <eos>: {eos_id}")
 
     matching_files_input = glob.glob(path_input_sequences_padded_batch_pattern)
     if len(matching_files_input) == 0:
@@ -422,13 +390,14 @@ if __name__ == "__main__":
     logger.info("Seq2Seq model with attention initialized.")
 
     # Define Loss Function and Optimizer
+    pad_id = sp_model.pad_id()
     criterion = nn.CrossEntropyLoss(ignore_index=pad_id)
     optimizer = torch.optim.Adam(model_with_attention.parameters(), lr=0.001)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=3, verbose=True)
 
     # If model state exists, load it
     if os.path.exists(path_model):
-        logger.info("Loading model state...")
+        logger.info(f"Loading model state: {path_model}")
         model_with_attention.load_state_dict(torch.load(path_model, weights_only=True))
         logger.info("Model state loaded.")
     else:
