@@ -2,8 +2,8 @@ import glob
 import os
 import random
 import time
-import spacy
-from common import PATH_WORKSPACE_ROOT, get_setting_training_loop_continue, get_setting_next_subset_continue
+import sentencepiece as sp
+from common import PATH_WORKSPACE_ROOT, VOCAB_PAD, get_path_sentencepiece_model, get_setting_training_loop_continue, get_setting_next_subset_continue
 from common import get_setting_training_subset_size
 from common import PATH_WORKSPACE_ROOT, get_path_log, get_path_input_output_pairs, get_path_vocab
 from common import get_path_input_sequences, get_path_output_sequences
@@ -24,7 +24,17 @@ os.chdir(PATH_WORKSPACE_ROOT)
 LOG_BASE_FILENAME = "4_train_model_with_attention"
 DATASET_NAME = 'ubuntu_dialogue_corpus_000'
 MODEL_NAME = 'seq2seq_attention'
-MODEL_VERSION = '1.0'
+MODEL_VERSION = '2.0'
+
+VAL_DATA_PROPORTION = 0.2
+RANDOM_SEED = 42
+PATIENCE_LEVEL = 2 # Number of epochs to wait for improvement before early stopping
+TORCH_THREAD_COUNT = 10
+PARALLEL_SPLIT_THREAD_COUNT = 0
+TRAINING_SUBSET_SIZE = get_setting_training_subset_size()
+LOSS_THRESHOLD = 1.0
+
+# ==========================
 
 path_input_csv = get_path_input_output_pairs(DATASET_NAME)
 path_vocab_pkl = get_path_vocab(DATASET_NAME)
@@ -33,23 +43,13 @@ path_output_sequences = get_path_output_sequences(DATASET_NAME)
 path_input_sequences_padded_batch_pattern = get_path_input_sequences_padded_batch_pattern(DATASET_NAME)
 path_output_sequences_padded_batch_pattern = get_path_output_sequences_padded_batch_pattern(DATASET_NAME)
 
+path_sentencepiece_model = get_path_sentencepiece_model(DATASET_NAME)
+
 # Define the save path
 path_model = get_path_model(MODEL_NAME, MODEL_VERSION)
 
 # ==========================
 
-VAL_DATA_PROPORTION = 0.2
-
-RANDOM_SEED = 42
-
-PATIENCE_LEVEL = 2 # Number of epochs to wait for improvement before early stopping
-TORCH_THREAD_COUNT = 10
-PARALLEL_SPLIT_THREAD_COUNT = 0
-
-TRAINING_SUBSET_SIZE = get_setting_training_subset_size()
-LOSS_THRESHOLD = 1.0
-
-# ==========================
 
 class Attention(nn.Module):
     """
@@ -333,27 +333,31 @@ if __name__ == "__main__":
 
     logger.info("Running main script...")
 
-    # Load spaCy language model
-    nlp = spacy.load("en_core_web_sm")
-    logger.info("spaCy model loaded.")
-
     # Set the current working directory
     os.chdir(PATH_WORKSPACE_ROOT)
     logger.info(f"Current Working Directory: {os.getcwd()}")
 
-    # ==========================
-
-    # Check for existing vocabulary
-    if os.path.exists(path_vocab_pkl):
-        logger.info("Vocabulary file found. Loading vocabulary...")
-        with open(path_vocab_pkl, "rb") as vocab_file:
-            vocab = pickle.load(vocab_file)
-        logger.info(f"Vocabulary loaded. Size: {len(vocab)}")
+    # Load SentencePiece model
+    if os.path.exists(path_sentencepiece_model):
+        sp_model = sp.SentencePieceProcessor(model_file=path_sentencepiece_model)
+        logger.info(f"Loaded SentencePiece model from {path_sentencepiece_model}.")
     else:
-        logger.error("Vocabulary file not found. Unable to proceed, exiting...")
+        logger.error("SentencePiece model file not found. Exiting...")
         exit()
 
-    padding_value = vocab["<pad>"]
+    # ==========================
+
+    # Define special token IDs
+    pad_id = sp_model.pad_id() if sp_model.pad_id() >= 0 else None
+    unk_id = sp_model.unk_id()
+    bos_id = sp_model.bos_id()
+    eos_id = sp_model.eos_id()
+
+    if pad_id is None:
+        logger.error("SentencePiece model does not define a <pad> token. Exiting...")
+        exit()
+
+    logger.info(f"Special tokens: <pad>: {pad_id}, <unk>: {unk_id}, <bos>: {bos_id}, <eos>: {eos_id}")
 
     matching_files_input = glob.glob(path_input_sequences_padded_batch_pattern)
     if len(matching_files_input) == 0:
@@ -371,8 +375,8 @@ if __name__ == "__main__":
     logger.info("Initializing Seq2Seq model...")
 
     # Hyperparameters
-    INPUT_DIM = len(vocab)
-    OUTPUT_DIM = len(vocab)
+    INPUT_DIM = sp_model.get_piece_size()
+    OUTPUT_DIM = sp_model.get_piece_size()
     EMB_DIM = 128
     ENCODER_HIDDEN_DIM = 256
     DECODER_HIDDEN_DIM = ENCODER_HIDDEN_DIM # using the same hidden dimension for encoder and decoder
@@ -387,6 +391,7 @@ if __name__ == "__main__":
     logger.info(f"Device Name: {torch.cuda.get_device_name(0)}")  # Should print the name of the GPU
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    logger.info(f"Using device: {device}")
 
     # Initialize encoder, decoder, and seq2seq model
     logger.info("Initializing encoder, decoder, and seq2seq model...")
@@ -417,7 +422,7 @@ if __name__ == "__main__":
     logger.info("Seq2Seq model with attention initialized.")
 
     # Define Loss Function and Optimizer
-    criterion = nn.CrossEntropyLoss(ignore_index=padding_value)
+    criterion = nn.CrossEntropyLoss(ignore_index=pad_id)
     optimizer = torch.optim.Adam(model_with_attention.parameters(), lr=0.001)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=3, verbose=True)
 
@@ -445,76 +450,28 @@ if __name__ == "__main__":
 
 # ==========================
 
-        # Randomly Select a Batch File
-        input_batch_files = glob.glob(path_input_sequences_padded_batch_pattern)
-        output_batch_files = glob.glob(path_output_sequences_padded_batch_pattern)
+        # Select a random batch
+        input_batch_file = random.choice(matching_files_input)
+        output_batch_file = random.choice(matching_files_output)
 
-        if not input_batch_files or not output_batch_files:
-            logger.error("No input or output batch files found. Unable to proceed, exiting...")
-            exit()
+        input_sequences = torch.load(input_batch_file)
+        output_sequences = torch.load(output_batch_file)
 
-        # Randomly select one batch file
-        selected_batch_idx = random.randint(0, len(input_batch_files) - 1)
-        input_batch_file = input_batch_files[selected_batch_idx]
-        output_batch_file = output_batch_files[selected_batch_idx]
+        # Sample subsets for training and validation
+        len_input = len(input_sequences)
+        len_output = len(output_sequences)
+        total_samples = min(len_input, len_output) # Ensure equal number of samples
 
-        logger.info(f"Selected batch file index: {selected_batch_idx}")
-        logger.info(f"Input batch file: {input_batch_file}")
-        logger.info(f"Output batch file: {output_batch_file}")
+        indices = random.sample(range(total_samples), TRAINING_SUBSET_SIZE)
+        train_size = int(TRAINING_SUBSET_SIZE * (1 - VAL_DATA_PROPORTION))
 
-        # Load the selected batch into memory
-        input_sequences_batch = torch.load(input_batch_file, weights_only=True)
-        logger.info(f"Input sequences batch loaded. Shape: {input_sequences_batch.shape}")
-        output_sequences_batch = torch.load(output_batch_file, weights_only=True)
-        logger.info(f"Output sequences batch loaded. Shape: {output_sequences_batch.shape}")
+        train_input = input_sequences[indices[:train_size]]
+        train_output = output_sequences[indices[:train_size]]
+        val_input = input_sequences[indices[train_size:]]
+        val_output = output_sequences[indices[train_size:]]
 
-        # Combine input and output sequences
-        combined_sequences = torch.cat((input_sequences_batch, output_sequences_batch), dim=1)
-        logger.info(f"Input and output sequences combined. Shape: {combined_sequences.shape}")
-
-        # ==========================
-        # Sample Subset from the Loaded Batch
-        batch_size = input_sequences_batch.shape[0]
-        if TRAINING_SUBSET_SIZE > batch_size:
-            logger.error(
-                f"Requested subset size ({TRAINING_SUBSET_SIZE}) exceeds batch size ({batch_size}). Reduce subset size or use multiple batches."
-            )
-            exit()
-
-        # Combine input and output sequences into a TupleDataset
-        train_data_proportion = 1 - VAL_DATA_PROPORTION
-        train_val_split = int(np.floor(train_data_proportion * TRAINING_SUBSET_SIZE))
-
-        # Randomly sample indices within the selected batch
-        logger.info(f"Sampling {TRAINING_SUBSET_SIZE} indices from the batch...")
-        subset_indices = np.random.choice(input_sequences_batch.shape[0], size=TRAINING_SUBSET_SIZE, replace=False).tolist()
-
-        # Create input and output subsets using the sampled indices
-        input_subset = input_sequences_batch[subset_indices]
-        output_subset = output_sequences_batch[subset_indices]
-
-        # Split into train and validation subsets
-        train_input = input_subset[:train_val_split]
-        train_output = output_subset[:train_val_split]
-        val_input = input_subset[train_val_split:]
-        val_output = output_subset[train_val_split:]
-
-        # Create TupleDataset for train and validation
-        train_subset = TupleDataset(train_input, train_output)
-        logger.info(f"Train subset created. Shape: {train_input.shape}")
-
-        val_subset = TupleDataset(val_input, val_output)
-        logger.info(f"Validation subset created. Shape: {val_input.shape}")
-
-        # Create DataLoaders for subsets
-        subset_train_loader = DataLoader(
-            train_subset, batch_size=BATCH_SIZE,
-            num_workers=PARALLEL_SPLIT_THREAD_COUNT,
-            pin_memory=True)
-        subset_val_loader = DataLoader(
-            val_subset, batch_size=BATCH_SIZE,
-            num_workers=PARALLEL_SPLIT_THREAD_COUNT,
-            pin_memory=True)
+        train_loader = DataLoader(TupleDataset(train_input, train_output), batch_size=BATCH_SIZE, shuffle=True)
+        val_loader = DataLoader(TupleDataset(val_input, val_output), batch_size=BATCH_SIZE)
 
 # ==========================
 
@@ -535,7 +492,7 @@ if __name__ == "__main__":
             logger.info("Training phase started...")
             model_with_attention.train()
             epoch_loss = 0
-            for src, trg in subset_train_loader:
+            for src, trg in train_loader:
                 src, trg = src.to(device), trg.to(device)
                 optimizer.zero_grad()
 
@@ -548,7 +505,7 @@ if __name__ == "__main__":
                 optimizer.step()
                 epoch_loss += loss.item()
 
-            train_loss = epoch_loss / len(subset_train_loader)
+            train_loss = epoch_loss / len(train_loader)
             loss_history.append(train_loss)
 
             # Validation Phase
@@ -556,7 +513,7 @@ if __name__ == "__main__":
             model_with_attention.eval()
             val_loss = 0
             with torch.no_grad():
-                for src, trg in subset_val_loader:
+                for src, trg in val_loader:
                     src, trg = src.to(device), trg.to(device)
 
                     outputs = model_with_attention(src, trg[:, :-1])
@@ -566,7 +523,7 @@ if __name__ == "__main__":
                     loss = criterion(outputs, trg)
                     val_loss += loss.item()
 
-            val_loss /= len(subset_val_loader)
+            val_loss /= len(val_loader)
             val_loss_history.append(val_loss)
             logger.info(f"Epoch {epoch_number}, Training Loss: {train_loss:.3f}, Validation Loss: {val_loss:.3f} (vs. current best of {best_val_loss:.3f})")
 
