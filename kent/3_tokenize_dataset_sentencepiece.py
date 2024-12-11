@@ -32,7 +32,7 @@ def train_sentencepiece(df, combined_text_path, model_prefix, vocab_size=32000, 
         model_prefix (str): Prefix for the output SentencePiece model files.
         vocab_size (int, optional): Size of the vocabulary for SentencePiece. Defaults to 32000.
         character_coverage (float, optional): Coverage of the character set for SentencePiece. Defaults to 1.0.
-    
+
     Returns:
         None
     """
@@ -40,13 +40,18 @@ def train_sentencepiece(df, combined_text_path, model_prefix, vocab_size=32000, 
     df[COL_INPUT].to_csv(combined_text_path, index=False, header=False, mode=FILE_MODE_WRITE)
     df[COL_OUTPUT].to_csv(combined_text_path, index=False, header=False, mode=FILE_MODE_APPEND)
 
-    # Train the SentencePiece model
+    # Train the SentencePiece model with special tokens explicitly added
     sp.SentencePieceTrainer.train(
-        input=combined_text_path, 
-        model_prefix=model_prefix, 
-        vocab_size=vocab_size, 
-        character_coverage=character_coverage
+        input=combined_text_path,
+        model_prefix=model_prefix,
+        vocab_size=vocab_size,
+        character_coverage=character_coverage,
+        pad_id=0,  # Explicitly set <pad> to index 0
+        unk_id=1,  # Optional: Assign <unk> to index 1
+        bos_id=2,  # Optional: Assign <bos> to index 2
+        eos_id=3   # Optional: Assign <eos> to index 3
     )
+
 
 def sentencepiece_tokenizer(texts, sentencepiece_model):
     """
@@ -161,17 +166,23 @@ if __name__ == "__main__":
     logger.info("NaN replaced with empty strings.")
 
     # check for existing SentencePiece model
-    if os.path.exists(path_sentencepiece_model):
-        logger.info(f"Found existing SentencePiece model: {path_sentencepiece_model}")
-        sp_model = sp.SentencePieceProcessor(model_file=path_sentencepiece_model)
-        logger.info(f"Loaded SentencePiece model.")
-    else:
+    if not os.path.exists(path_sentencepiece_model):
         logger.info(f"No existing SentencePiece model found. Training new model...")
         dir_model_name = os.path.join(FOLDER_DATASET, get_base_filename_sentencepiece_model(SENTENCEPIECE_MODEL_NAME))
         train_sentencepiece(
             df, path_combined_text, dir_model_name,
             vocab_size=VOCAB_SIZE_DEFAULT, character_coverage=CHAR_COVERAGE_DEFAULT)
         logger.info(f"SentencePiece model training complete. Model files saved to: {path_sentencepiece_model}")
+
+    logger.info(f"Loading SentencePiece model: {path_sentencepiece_model}")
+    sp_model = sp.SentencePieceProcessor(model_file=path_sentencepiece_model)
+    logger.info(f"Loaded SentencePiece model.")
+
+    logger.info(f"Vocabulary size: {sp_model.get_piece_size()}")
+
+    # Verify <pad> Token: After training, verify that the <pad> token is included in the SentencePiece vocabulary
+    pad_id = sp_model.pad_id()
+    logger.info(f"Pad ID: {sp_model.pad_id()}")  # Should output a valid ID (e.g., 0 or any other positive integer)
 
     vocab = {VOCAB_PAD: sp_model.pad_id(), VOCAB_UNK: sp_model.unk_id(), VOCAB_BOS: sp_model.bos_id(), VOCAB_EOS: sp_model.eos_id()}
     padding_value = vocab[VOCAB_PAD]
