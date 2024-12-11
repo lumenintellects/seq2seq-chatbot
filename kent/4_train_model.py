@@ -4,17 +4,16 @@ import random
 import time
 import sentencepiece as sp
 from common import PATH_WORKSPACE_ROOT, TupleDataset, get_path_sentencepiece_model, get_setting_training_loop_continue, get_setting_next_subset_continue
-from common import get_setting_analyze_sequences, get_setting_training_subset_size
+from common import get_setting_training_subset_size
 from common import Encoder, Decoder, Seq2Seq
-from common import PATH_WORKSPACE_ROOT, get_path_log, get_path_input_output_pairs, get_path_vocab
+from common import PATH_WORKSPACE_ROOT, get_path_log, get_path_input_output_pairs
 from common import get_path_input_sequences, get_path_output_sequences
 from common import get_path_input_sequences_padded_batch_pattern, get_path_output_sequences_padded_batch_pattern
 from common import get_path_model
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader
 import logging
-from sklearn.model_selection import train_test_split
 
 # Set the current working directory using the constant from common.py
 os.chdir(PATH_WORKSPACE_ROOT)
