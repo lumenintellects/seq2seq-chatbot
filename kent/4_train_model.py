@@ -158,15 +158,20 @@ if __name__ == "__main__":
 
         # Select a random batch
         input_batch_file = random.choice(matching_files_input)
+        logger.info(f"Selected input batch file: {input_batch_file}")
         output_batch_file = random.choice(matching_files_output)
+        logger.info(f"Selected output batch file: {output_batch_file}")
 
         input_sequences = torch.load(input_batch_file)
         output_sequences = torch.load(output_batch_file)
 
         # Sample subsets for training and validation
         len_input = len(input_sequences)
+        logger.info(f"Number of input sequences: {len_input}")
         len_output = len(output_sequences)
+        logger.info(f"Number of output sequences: {len_output}")
         total_samples = min(len_input, len_output) # Ensure equal number of samples
+        logger.info(f"Number of samples to take: {total_samples}")
 
         indices = random.sample(range(total_samples), TRAINING_SUBSET_SIZE)
         train_size = int(TRAINING_SUBSET_SIZE * (1 - VAL_DATA_PROPORTION))
@@ -190,6 +195,7 @@ if __name__ == "__main__":
         while get_setting_training_loop_continue():
 
             # Training Phase
+            logger.info("Training phase started...")
             model.train()
             epoch_loss = 0
             for src, trg in train_loader:
@@ -210,6 +216,7 @@ if __name__ == "__main__":
             loss_history.append(train_loss)
 
             # Validation Phase
+            logger.info("Validation phase started...")
             model.eval()
             val_loss = 0
             with torch.no_grad():
