@@ -170,7 +170,7 @@ if __name__ == "__main__":
         len_output = len(output_sequences)
         logger.info(f"Number of output sequences: {len_output}")
         total_samples = min(len_input, len_output) # Ensure equal number of samples
-        logger.info(f"Number of samples to take: {total_samples}")
+        logger.info(f"Number of samples to train and validate: {total_samples}")
 
         indices = random.sample(range(total_samples), TRAINING_SUBSET_SIZE)
         train_size = int(TRAINING_SUBSET_SIZE * (1 - VAL_DATA_PROPORTION))

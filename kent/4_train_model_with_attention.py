@@ -421,15 +421,20 @@ if __name__ == "__main__":
 
         # Select a random batch
         input_batch_file = random.choice(matching_files_input)
+        logger.info(f"Selected input batch file: {input_batch_file}")
         output_batch_file = random.choice(matching_files_output)
+        logger.info(f"Selected output batch file: {output_batch_file}")
 
         input_sequences = torch.load(input_batch_file)
         output_sequences = torch.load(output_batch_file)
 
         # Sample subsets for training and validation
         len_input = len(input_sequences)
+        logger.info(f"Number of input sequences: {len_input}")
         len_output = len(output_sequences)
+        logger.info(f"Number of output sequences: {len_output}")
         total_samples = min(len_input, len_output) # Ensure equal number of samples
+        logger.info(f"Number of samples to train and validate: {total_samples}")
 
         indices = random.sample(range(total_samples), TRAINING_SUBSET_SIZE)
         train_size = int(TRAINING_SUBSET_SIZE * (1 - VAL_DATA_PROPORTION))
