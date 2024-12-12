@@ -24,7 +24,8 @@ LOG_BASE_FILENAME = "5_evaluate_model"
 MODEL_NAME = 'seq2seq'
 MODEL_VERSION = '2.0'
 
-TEST_DATA_PROPORTION = 0.2
+TEST_SUBSET_SIZE = get_setting_evaluation_subset_size()  # Number of sequences in each subset
+
 RANDOM_SEED = 42
 
 SUBSET_SIZE = get_setting_evaluation_subset_size()  # Number of sequences in each subset
@@ -250,7 +251,6 @@ if __name__ == "__main__":
         len_population = min(len_input, len_output) # Ensure equal number of samples
         logger.info(f"Number of samples to train and validate: {len_population}")
 
-        TEST_SUBSET_SIZE = 100
         # Ensure test subset size is within bounds
         if TEST_SUBSET_SIZE > len_population:
             logger.error(f"Test subset size ({TEST_SUBSET_SIZE}) exceeds population size ({len_population}). Exiting...")
