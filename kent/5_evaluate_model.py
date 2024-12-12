@@ -2,19 +2,17 @@ import glob
 import os
 import random
 import time
-from common import PATH_WORKSPACE_ROOT, get_path_input_output_pairs
+import sentencepiece as sp
+from common import PATH_WORKSPACE_ROOT, TupleDataset, get_path_input_output_pairs, get_path_sentencepiece_model
 from common import get_setting_evaluation_loop_continue
 from common import Encoder, Decoder, Seq2Seq
 from common import PATH_WORKSPACE_ROOT, get_path_log, get_setting_evaluation_reload_model_in_loop, get_path_vocab
-from common import get_path_input_sequences, get_path_output_sequences
 from common import get_path_input_sequences_padded_batch_pattern, get_path_output_sequences_padded_batch_pattern
 from common import get_path_model, get_setting_evaluation_subset_size
 import torch
 import torch.nn as nn
-import pickle
+from torch.utils.data import DataLoader
 import logging
-from torch.utils.data import DataLoader, TensorDataset
-from sklearn.model_selection import train_test_split
 from nltk.translate.bleu_score import corpus_bleu
 
 # Set the current working directory using the constant from common.py
@@ -24,7 +22,7 @@ DATASET_NAME = 'ubuntu_dialogue_corpus_000'
 LOG_BASE_FILENAME = "5_evaluate_model"
 
 MODEL_NAME = 'seq2seq'
-MODEL_VERSION = '1.0'
+MODEL_VERSION = '2.0'
 
 TEST_DATA_PROPORTION = 0.2
 RANDOM_SEED = 42
@@ -32,6 +30,17 @@ RANDOM_SEED = 42
 SUBSET_SIZE = get_setting_evaluation_subset_size()  # Number of sequences in each subset
 TEST_SIZE = 0.2  # Proportion of the subset to use for testing
 BATCH_SIZE = 64  # Adjust as needed
+
+# ==========================
+
+path_input_csv = get_path_input_output_pairs(DATASET_NAME)
+path_vocab_pkl = get_path_vocab(DATASET_NAME)
+path_input_sequences_padded_batch_pattern = get_path_input_sequences_padded_batch_pattern(DATASET_NAME)
+path_output_sequences_padded_batch_pattern = get_path_output_sequences_padded_batch_pattern(DATASET_NAME)
+
+path_sentencepiece_model = get_path_sentencepiece_model(DATASET_NAME)
+
+path_model = get_path_model(MODEL_NAME, MODEL_VERSION)
 
 # ==========================
 
@@ -64,65 +73,57 @@ def load_latest_model_state(model, path_model, logger):
 def evaluate_model(model, dataloader, criterion, vocab, device):
     """
     Evaluate the model on the test set and compute metrics.
-    
+
     Args:
         model: The trained seq2seq model.
         dataloader: DataLoader for the test set.
         criterion: Loss function.
-        vocab: Vocabulary mapping.
+        vocab: Model vocabulary (SentencePiece model for decoding).
         device: The device (CPU/GPU) to use.
 
     Returns:
         test_loss: Average loss on the test set.
         bleu_score: BLEU score for generated predictions.
     """
-    model.eval()
-    test_loss = 0
-    all_references = []
-    all_hypotheses = []
+    model.eval()  # Set the model to evaluation mode
+    total_loss = 0
+    references = []
+    hypotheses = []
 
-    with torch.no_grad():
+    with torch.no_grad():  # Disable gradient calculation for evaluation
         for src, trg in dataloader:
             src, trg = src.to(device), trg.to(device)
 
+            # Remove the <eos> token from the target sequences
+            trg_input = trg[:, :-1]
+            trg_target = trg[:, 1:].reshape(-1)  # Targets for loss calculation
+
+            # Forward pass through the model
+            outputs = model(src, trg_input)
+            outputs = outputs.reshape(-1, outputs.shape[-1])
+
+            # Compute loss
+            loss = criterion(outputs, trg_target)
+            total_loss += loss.item()
+
             # Generate predictions
-            logits = model(src, trg[:, :-1])  # Exclude <eos> from target
-            
-            # Use logits for loss computation
-            logits_reshaped = logits.reshape(-1, logits.shape[-1])
-            trg_reshaped = trg[:, 1:].reshape(-1)  # Exclude <bos>
-            loss = criterion(logits_reshaped, trg_reshaped)
-            test_loss += loss.item()
+            predicted_ids = outputs.argmax(dim=1).view(trg_input.shape[0], -1)
 
-            # Use argmax for token prediction (for BLEU)
-            predictions = logits.argmax(dim=-1)  # Get the predicted token indices
+            # Convert predictions and targets to text for BLEU score calculation
+            for i in range(trg_input.size(0)):  # Batch size loop
+                predicted_tokens = [vocab.id_to_piece(idx.item()) for idx in predicted_ids[i] if idx != vocab.pad_id()]
+                reference_tokens = [vocab.id_to_piece(idx.item()) for idx in trg[i, 1:] if idx != vocab.pad_id()]
 
-            # Decode predictions and references
-            for i in range(src.size(0)):
-                reference = [idx_to_token(vocab, trg[i].tolist())]
-                hypothesis = idx_to_token(vocab, predictions[i].tolist())
+                hypotheses.append(predicted_tokens)
+                references.append([reference_tokens])  # BLEU requires a list of references per sentence
 
-                all_references.append(reference)  # Reference needs to be a list of list
-                all_hypotheses.append(hypothesis)
+    # Calculate BLEU score
+    bleu_score = corpus_bleu(references, hypotheses)
 
-    test_loss /= len(dataloader)
-    bleu_score = corpus_bleu(all_references, all_hypotheses)
+    # Compute average loss
+    test_loss = total_loss / len(dataloader)
 
     return test_loss, bleu_score
-
-def idx_to_token(vocab, indices):
-    """
-    Convert a list of indices to tokens using the vocabulary.
-
-    Args:
-        vocab: Vocabulary mapping indices to tokens.
-        indices: List of indices to convert.
-
-    Returns:
-        tokens: Decoded token list as a single string.
-    """
-    token_list = [key for key, value in vocab.items() if value in indices]
-    return token_list
 
 # ==========================
 
@@ -149,46 +150,25 @@ if __name__ == "__main__":
     os.chdir(PATH_WORKSPACE_ROOT)
     logger.info(f"Current Working Directory: {os.getcwd()}")
 
-    # ==========================
-
-    path_input_csv = get_path_input_output_pairs(DATASET_NAME)
-    path_vocab_pkl = get_path_vocab(DATASET_NAME)
-    path_input_sequences = get_path_input_sequences(DATASET_NAME)
-    path_input_sequences_padded_batch_pattern = get_path_input_sequences_padded_batch_pattern(DATASET_NAME)
-    path_output_sequences_padded_batch_pattern = get_path_output_sequences_padded_batch_pattern(DATASET_NAME)
-
-    # Define the save path
-    path_model = get_path_model(MODEL_NAME, MODEL_VERSION)
+    # Load SentencePiece model
+    if os.path.exists(path_sentencepiece_model):
+        sp_model = sp.SentencePieceProcessor(model_file=path_sentencepiece_model)
+        logger.info(f"Loaded SentencePiece model from {path_sentencepiece_model}.")
+    else:
+        logger.error("SentencePiece model file not found. Exiting...")
+        exit()
 
     # ==========================
 
-    # Check for existing vocabulary
-    if os.path.exists(path_vocab_pkl):
-        logger.info("Vocabulary file found. Loading vocabulary...")
-        with open(path_vocab_pkl, "rb") as vocab_file:
-            vocab = pickle.load(vocab_file)
-        logger.info(f"Vocabulary loaded. Size: {len(vocab)}")
-    else:
-        logger.error("Vocabulary file not found. Unable to proceed, exiting...")
+    matching_files_input = glob.glob(path_input_sequences_padded_batch_pattern)
+    if len(matching_files_input) == 0:
+        logger.error("No matching input files found. Unable to proceed, exiting...")
         exit()
 
-    # Check for previous serialized padded input sequences matching batch file name pattern
-    if len(glob.glob(path_input_sequences_padded_batch_pattern)) > 0:
-        logger.info("Serialized padded input sequences found.")
-    else:
-        logger.error("Serialized padded input sequences not found. Unable to proceed, exiting...")
+    matching_files_output = glob.glob(path_output_sequences_padded_batch_pattern)
+    if len(matching_files_output) == 0:
+        logger.error("No matching output files found. Unable to proceed, exiting...")
         exit()
-
-    padding_value = vocab["<pad>"]
-
-    input_sequences_padded = torch.cat([torch.load(file, weights_only=True) for file in glob.glob(path_input_sequences_padded_batch_pattern)], dim=0)
-    logger.info("Loaded input sequences from files.")
-
-    output_sequences_padded = torch.cat([torch.load(file, weights_only=True) for file in glob.glob(path_output_sequences_padded_batch_pattern)], dim=0)
-    logger.info("Loaded output sequences from file.")
-
-    # Combine input and output sequences into a single list of pairs
-    combined_sequences = list(zip(input_sequences_padded, output_sequences_padded))
 
     # ==========================
     # Instantiate Seq2Seq Model
@@ -196,14 +176,13 @@ if __name__ == "__main__":
     logger.info("Initializing Seq2Seq model...")
 
     # Hyperparameters
-    INPUT_DIM = len(vocab)
-    OUTPUT_DIM = len(vocab)
-    EMB_DIM = 256
-    HIDDEN_DIM = 512
+    INPUT_DIM = sp_model.get_piece_size()
+    OUTPUT_DIM = sp_model.get_piece_size()
+    EMB_DIM = 128
+    HIDDEN_DIM = 256
     N_LAYERS = 2
     DROPOUT = 0.5
-    BATCH_SIZE = 64
-    num_epochs = 10
+    BATCH_SIZE = 32
 
     # Check GPU Availability
     logger.info("Checking GPU availability...")
@@ -211,21 +190,36 @@ if __name__ == "__main__":
     logger.info(f"Device ID: {torch.cuda.current_device()}")  # Should print the device ID (e.g., 0)
     logger.info(f"Device Name: {torch.cuda.get_device_name(0)}")  # Should print the name of the GPU
 
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    logger.info(f"Using device: {device}")
+
     # Initialize encoder, decoder, and seq2seq model
     logger.info("Initializing encoder, decoder, and seq2seq model...")
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    # Initialize encoder
     encoder = Encoder(INPUT_DIM, EMB_DIM, HIDDEN_DIM, N_LAYERS, DROPOUT).to(device)
+    logger.info("Encoder initialized with input dimension of {INPUT_DIM}, embedding dimension of {EMB_DIM}, hidden dimension of {HIDDEN_DIM}, {N_LAYERS} layers, and dropout of {DROPOUT}.")
+
+    # Initialize decoder
     decoder = Decoder(OUTPUT_DIM, EMB_DIM, HIDDEN_DIM, N_LAYERS, DROPOUT).to(device)
+    logger.info("Decoder initialized with output dimension of {OUTPUT_DIM}, embedding dimension of {EMB_DIM}, hidden dimension of {HIDDEN_DIM}, {N_LAYERS} layers, and dropout of {DROPOUT}.")  
+
+    # Initialize Seq2Seq model
     model = Seq2Seq(encoder, decoder, device).to(device)
 
     # Define Loss Function and Optimizer
-    criterion = nn.CrossEntropyLoss(ignore_index=padding_value)
+    pad_id = sp_model.pad_id()
+    criterion = nn.CrossEntropyLoss(ignore_index=pad_id)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=3, verbose=True)
 
-    # Load the latest model state
-    if not load_latest_model_state(model, path_model, logger):
-        logger.error("Unable to load model state. Exiting...")
-        exit()
+    # If model state exists, load it
+    if os.path.exists(path_model):
+        logger.info(f"Loading model state: {path_model}")
+        model.load_state_dict(torch.load(path_model, weights_only=True))
+        logger.info("Model state loaded.")
+    else:
+        logger.info("Model state not found. Initializing new model.")
 
 # ==========================
 
@@ -239,20 +233,38 @@ if __name__ == "__main__":
 
         sample_subset_counter += 1
 
-        # Step 1: Randomly sample a subset of sequences
-        subset_combined_sequences = random.sample(combined_sequences, SUBSET_SIZE)
-        
-        # Step 2: Split the subset into train and test
-        _, subset_test_data = train_test_split(subset_combined_sequences, test_size=TEST_SIZE, random_state=RANDOM_SEED)
-        
-        # Step 3: Unpack test data
-        subset_test_inputs, subset_test_outputs = zip(*subset_test_data)
-        subset_test_inputs = torch.stack(subset_test_inputs)
-        subset_test_outputs = torch.stack(subset_test_outputs)
-        
-        # Create test DataLoader
-        subset_test_dataset = TensorDataset(subset_test_inputs, subset_test_outputs)
-        subset_test_loader = DataLoader(subset_test_dataset, batch_size=BATCH_SIZE, shuffle=False)
+        # Select a random batch
+        input_batch_file = random.choice(matching_files_input)
+        logger.info(f"Selected input batch file: {input_batch_file}")
+        output_batch_file = random.choice(matching_files_output)
+        logger.info(f"Selected output batch file: {output_batch_file}")
+
+        input_sequences = torch.load(input_batch_file)
+        output_sequences = torch.load(output_batch_file)
+
+        # Sample subsets for training and validation
+        len_input = len(input_sequences)
+        logger.info(f"Number of input sequences: {len_input}")
+        len_output = len(output_sequences)
+        logger.info(f"Number of output sequences: {len_output}")
+        len_population = min(len_input, len_output) # Ensure equal number of samples
+        logger.info(f"Number of samples to train and validate: {len_population}")
+
+        TEST_SUBSET_SIZE = 100
+        # Ensure test subset size is within bounds
+        if TEST_SUBSET_SIZE > len_population:
+            logger.error(f"Test subset size ({TEST_SUBSET_SIZE}) exceeds population size ({len_population}). Exiting...")
+            exit()
+
+        sample_indices = random.sample(range(len_population), TEST_SUBSET_SIZE)
+        len_sampled = len(sample_indices)
+
+        logger.info(f"Number of samples selected for testing: {TEST_SUBSET_SIZE}.")
+
+        test_input = input_sequences[sample_indices[:TEST_SUBSET_SIZE]]
+        test_output = output_sequences[sample_indices[:TEST_SUBSET_SIZE]]
+
+        test_loader = DataLoader(TupleDataset(test_input, test_output), batch_size=BATCH_SIZE, shuffle=True)
 
         if get_setting_evaluation_reload_model_in_loop():
             # Reload the model state
@@ -261,8 +273,8 @@ if __name__ == "__main__":
 
         # Step 4: Evaluate the model on the subset
         logger.info(f"Evaluating subset {sample_subset_counter}...")
-        subset_loss, subset_bleu = evaluate_model(model, subset_test_loader, criterion, vocab, device)
-        
+        subset_loss, subset_bleu = evaluate_model(model, test_loader, criterion, sp_model, device)
+
         # Accumulate the results
         cumulative_loss += subset_loss
         cumulative_bleu += subset_bleu
