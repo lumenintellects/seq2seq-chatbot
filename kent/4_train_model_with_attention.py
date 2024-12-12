@@ -433,16 +433,25 @@ if __name__ == "__main__":
         logger.info(f"Number of input sequences: {len_input}")
         len_output = len(output_sequences)
         logger.info(f"Number of output sequences: {len_output}")
-        total_samples = min(len_input, len_output) # Ensure equal number of samples
-        logger.info(f"Number of samples to train and validate: {total_samples}")
+        len_population = min(len_input, len_output) # Ensure equal number of samples
+        logger.info(f"Population to sample from: {len_population}")
 
-        indices = random.sample(range(total_samples), TRAINING_SUBSET_SIZE)
+        # Ensure training subset size is within bounds
+        if TRAINING_SUBSET_SIZE > len_population:
+            logger.error(f"Training subset size ({TRAINING_SUBSET_SIZE}) exceeds population size ({len_population}). Exiting...")
+            exit()
+
+        sample_indices = random.sample(range(len_population), TRAINING_SUBSET_SIZE)
+        len_sampled = len(sample_indices)
+
         train_size = int(TRAINING_SUBSET_SIZE * (1 - VAL_DATA_PROPORTION))
+        val_size = TRAINING_SUBSET_SIZE - train_size
+        logger.info(f"Number of samples selected: {len_sampled}, of which {train_size} for training and {val_size} for validation.")
 
-        train_input = input_sequences[indices[:train_size]]
-        train_output = output_sequences[indices[:train_size]]
-        val_input = input_sequences[indices[train_size:]]
-        val_output = output_sequences[indices[train_size:]]
+        train_input = input_sequences[sample_indices[:train_size]]
+        train_output = output_sequences[sample_indices[:train_size]]
+        val_input = input_sequences[sample_indices[train_size:]]
+        val_output = output_sequences[sample_indices[train_size:]]
 
         train_loader = DataLoader(TupleDataset(train_input, train_output), batch_size=BATCH_SIZE, shuffle=True)
         val_loader = DataLoader(TupleDataset(val_input, val_output), batch_size=BATCH_SIZE)
