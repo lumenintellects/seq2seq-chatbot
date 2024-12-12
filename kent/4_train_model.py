@@ -100,7 +100,7 @@ if __name__ == "__main__":
     HIDDEN_DIM = 256
     N_LAYERS = 2
     DROPOUT = 0.5
-    BATCH_SIZE = 16
+    BATCH_SIZE = 32
 
     # Check GPU Availability
     logger.info("Checking GPU availability...")
@@ -152,6 +152,7 @@ if __name__ == "__main__":
 
     continue_training = True
     while continue_training:
+        loss_improvement_counter = 0
 
 # ==========================
 
@@ -170,7 +171,7 @@ if __name__ == "__main__":
         len_output = len(output_sequences)
         logger.info(f"Number of output sequences: {len_output}")
         len_population = min(len_input, len_output) # Ensure equal number of samples
-        logger.info(f"Number of samples to train and validate: {len_population}")
+        logger.info(f"Population size for sampling: {len_population}")
 
         # Ensure training subset size is within bounds
         if TRAINING_SUBSET_SIZE > len_population:
@@ -247,8 +248,9 @@ if __name__ == "__main__":
             logger.info(f"Epoch {epoch_number}, Training Loss: {train_loss:.3f}, Validation Loss: {val_loss:.3f} (vs. current best of {best_val_loss:.3f})")
 
             # Early Stopping Check
-            has_val_loss_improved = val_loss < best_val_loss
+            has_val_loss_improved = val_loss < best_val_loss and not epoch_number == 1
             if has_val_loss_improved:
+                loss_improvement_counter += 1
                 best_val_loss = val_loss
                 logger.info(f"Best validation loss improved to {best_val_loss:.3f}.")
 
@@ -266,6 +268,10 @@ if __name__ == "__main__":
                   continue_training = get_setting_next_subset_continue()
                   break
 
+        if epoch_number == 0:
+            logger.error("No epochs completed. Exiting...")
+            exit()
+
         iteration_end_time = time.time()
         iteration_time_training_loop = iteration_end_time - iteration_start_time
         iteration_time_average_per_epoch = iteration_time_training_loop / epoch_number
@@ -275,3 +281,11 @@ if __name__ == "__main__":
         # Stop outer loop if no continuation
         if not get_setting_next_subset_continue():
             break
+
+        # Stop outer loop if there's been no improvement in validation loss
+        if loss_improvement_counter == 0:
+            logger.info(f"No improvement in validation loss after {epoch_number} epochs. Exiting...")
+            break
+        else:
+            logger.info(f"Validation loss improved {loss_improvement_counter} times.")
+            loss_improvement_counter = 0 # reset counter
