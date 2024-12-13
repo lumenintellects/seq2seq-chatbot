@@ -3,10 +3,9 @@ import os
 import random
 import time
 import sentencepiece as sp
-from common import PATH_WORKSPACE_ROOT, Attention, BidirectionalEncoderWithAttention, DecoderWithAttention, Seq2SeqWithAttention, TupleDataset, get_path_input_output_pairs, get_path_sentencepiece_model, initialize_seq2seq_with_attention
+from common import PATH_WORKSPACE_ROOT, TupleDataset, get_path_sentencepiece_model, initialize_seq2seq_with_attention
 from common import get_setting_evaluation_loop_continue
-from common import Encoder, Decoder, Seq2Seq
-from common import PATH_WORKSPACE_ROOT, get_path_log, get_setting_evaluation_reload_model_in_loop, get_path_vocab
+from common import PATH_WORKSPACE_ROOT, get_path_log, get_setting_evaluation_reload_model_in_loop
 from common import get_path_input_sequences_padded_batch_pattern, get_path_output_sequences_padded_batch_pattern
 from common import get_path_model, get_setting_evaluation_subset_size
 import torch
