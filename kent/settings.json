@@ -2,11 +2,11 @@
   "enableLogging": true,
   "debugMode": false,
 
-  "trainingSubsetSize": 2000,
+  "trainingSubsetSize": 1000,
   "nextSubsetContinue": true,
   "trainingLoopContinue": true,
 
-  "evaluationSubsetSize": 2000,
+  "evaluationSubsetSize": 1000,
   "evaluationLoopContinue": true,
   "evaluationReloadModelInLoop": true,
 

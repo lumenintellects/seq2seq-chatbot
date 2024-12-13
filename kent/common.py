@@ -1,8 +1,10 @@
 import json
 import os
 import pandas as pd
+import torch
 import torch.nn as nn
 from torch.utils.data import Dataset
+import torch.nn.functional as F
 
 PATH_WORKSPACE_ROOT = r'D:\git\github\seq2seq-chatbot\kent' # Set the workspace root path here
 FOLDER_DATASET = 'dataset' # Set the name of the folder containing the datasets here
@@ -396,6 +398,8 @@ SETTING_EVALUATION_SUBSET_SIZE = 'evaluationSubsetSize'
 SETTING_EVALUATION_LOOP_CONTINUE = 'evaluationLoopContinue'
 SETTING_EVALUATION_RELOAD_MODEL_IN_LOOP = 'evaluationReloadModelInLoop'
 
+# ==========================
+
 # Define the Encoder
 class Encoder(nn.Module):
     def __init__(self, input_dim, emb_dim, hidden_dim, n_layers, dropout):
@@ -440,6 +444,303 @@ class Seq2Seq(nn.Module):
         hidden = self.encoder(src)  # Get the context vector
         outputs, _ = self.decoder(trg, hidden)  # Decode based on the context vector
         return outputs
+
+# ==========================
+
+class Attention(nn.Module):
+    """
+    Attention mechanism to compute attention weights.
+    """
+
+    def __init__(self, encoder_hidden_dim, decoder_hidden_dim):
+        super().__init__()
+        # Adjust Linear layer input dimension to match concatenated dimensions
+        self.attn = nn.Linear((encoder_hidden_dim * 2) + decoder_hidden_dim, decoder_hidden_dim)
+        self.v = nn.Linear(decoder_hidden_dim, 1, bias=False)
+
+    def forward(self, hidden, encoder_outputs, mask=None):
+        """
+        Compute attention weights.
+        Args:
+            hidden: [batch_size, decoder_hidden_dim] - Decoder's last hidden state.
+            encoder_outputs: [batch_size, src_len, encoder_hidden_dim * 2] - All encoder outputs.
+            mask: [batch_size, src_len] - Optional padding mask.
+        Returns:
+            attention: [batch_size, src_len] - Normalized attention scores.
+        """
+        batch_size = encoder_outputs.shape[0]
+        src_len = encoder_outputs.shape[1]
+
+        # Repeat decoder hidden state `src_len` times to match encoder outputs
+        hidden = hidden.unsqueeze(1).repeat(1, src_len, 1)  # [batch_size, src_len, decoder_hidden_dim]
+
+        # Concatenate hidden state with encoder outputs
+        energy = torch.tanh(self.attn(torch.cat((hidden, encoder_outputs), dim=2)))  # [batch_size, src_len, decoder_hidden_dim]
+
+        # Project energy down to a single attention score per time step
+        attention = self.v(energy).squeeze(2)  # [batch_size, src_len]
+
+        # Apply mask if provided (optional)
+        if mask is not None:
+            attention = attention.masked_fill(mask == 0, -1e10)
+
+        # Normalize scores
+        return F.softmax(attention, dim=1)  # [batch_size, src_len]
+
+class BidirectionalEncoderWithAttention(nn.Module):
+    """
+    Bidirectional Encoder with attention mechanism.
+    """
+
+    def __init__(self, input_dim, emb_dim, hidden_dim, n_layers, dropout):
+        """
+        Initialize the encoder.
+
+        Args:
+            input_dim (int): Size of the input vocabulary.
+            emb_dim (int): Dimensionality of word embeddings.
+            hidden_dim (int): Hidden dimension for GRU.
+            n_layers (int): Number of GRU layers.
+            dropout (float): Dropout rate.
+        """
+        super().__init__()
+
+        self.hidden_dim = hidden_dim
+        self.n_layers = n_layers
+        self.emb_dim = emb_dim
+
+        # Embedding layer to convert tokens to embeddings
+        self.embedding = nn.Embedding(input_dim, emb_dim)
+
+        # Bidirectional GRU
+        self.rnn = nn.GRU(
+            emb_dim,
+            hidden_dim,
+            n_layers,
+            dropout=dropout,
+            bidirectional=True,
+            batch_first=True
+        )
+
+        # Dropout layer
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, src):
+        """
+        Forward pass through the encoder.
+
+        Args:
+            src (Tensor): Source sequence tensor with shape [batch_size, src_len].
+
+        Returns:
+            outputs (Tensor): Encoder outputs for attention, shape [batch_size, src_len, hidden_dim * 2].
+            hidden (Tensor): Hidden state, shape [n_layers * 2, batch_size, hidden_dim].
+        """
+        # Apply embedding and dropout
+        embedded = self.dropout(self.embedding(src))  # [batch_size, src_len, emb_dim]
+
+        # Pass through GRU
+        outputs, hidden = self.rnn(embedded)  # 
+        # outputs: [batch_size, src_len, hidden_dim * 2] (bidirectional outputs)
+        # hidden: [n_layers * 2, batch_size, hidden_dim] (stacked forward & backward hidden states)
+
+        return outputs, hidden
+
+class DecoderWithAttention(nn.Module):
+    """
+    Decoder with attention mechanism.
+    """
+
+    def __init__(self, output_dim, emb_dim, hidden_dim, n_layers, dropout, attention, encoder_hidden_dim):
+        """
+        Initialize the decoder.
+
+        Args:
+            output_dim (int): Size of the output vocabulary.
+            emb_dim (int): Dimensionality of word embeddings.
+            hidden_dim (int): Hidden dimension for GRU.
+            n_layers (int): Number of GRU layers.
+            dropout (float): Dropout rate.
+            attention (nn.Module): Attention mechanism.
+            encoder_hidden_dim (int): Hidden dimension of the encoder.
+        """
+        super().__init__()
+
+        self.output_dim = output_dim
+        self.hidden_dim = hidden_dim
+        self.n_layers = n_layers
+        self.attention = attention
+
+        # Embedding layer for target sequences
+        self.embedding = nn.Embedding(output_dim, emb_dim)
+
+        # GRU layer
+        self.rnn = nn.GRU(
+            emb_dim + encoder_hidden_dim * 2,  # Input is embedding + attention context
+            hidden_dim,
+            n_layers,
+            dropout=dropout,
+            batch_first=True
+        )
+
+        # Fully connected layer to generate predictions
+        self.fc_out = nn.Linear(hidden_dim + encoder_hidden_dim * 2 + emb_dim, output_dim)
+
+        # Dropout layer
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, input, hidden, encoder_outputs):
+        """
+        Forward pass through the decoder.
+
+        Args:
+            input (Tensor): Current input token indices [batch_size].
+            hidden (Tensor): Previous hidden state [n_layers, batch_size, hidden_dim].
+            encoder_outputs (Tensor): Encoder outputs [batch_size, src_len, encoder_hidden_dim * 2].
+
+        Returns:
+            prediction (Tensor): Predicted token scores [batch_size, output_dim].
+            hidden (Tensor): Updated hidden state [n_layers, batch_size, hidden_dim].
+        """
+        # Input shape: [batch_size]
+        input = input.unsqueeze(1)  # Add a time dimension [batch_size, 1]
+
+        # Apply embedding and dropout
+        embedded = self.dropout(self.embedding(input))  # [batch_size, 1, emb_dim]
+
+        # Compute attention weights and context
+        a = self.attention(hidden[-1], encoder_outputs)  # [batch_size, src_len]
+        a = a.unsqueeze(1)  # [batch_size, 1, src_len]
+        context = torch.bmm(a, encoder_outputs)  # [batch_size, 1, encoder_hidden_dim * 2]
+
+        # Concatenate context with embedded input
+        rnn_input = torch.cat((embedded, context), dim=2)  # [batch_size, 1, emb_dim + encoder_hidden_dim * 2]
+
+        # Pass through GRU
+        output, hidden = self.rnn(rnn_input, hidden)  # output: [batch_size, 1, hidden_dim]
+
+        # Concatenate output, context, and embedded input for prediction
+        output = output.squeeze(1)  # [batch_size, hidden_dim]
+        context = context.squeeze(1)  # [batch_size, encoder_hidden_dim * 2]
+        embedded = embedded.squeeze(1)  # [batch_size, emb_dim]
+        prediction = self.fc_out(torch.cat((output, context, embedded), dim=1))  # [batch_size, output_dim]
+
+        return prediction, hidden
+
+# Seq2Seq model with Attention
+class Seq2SeqWithAttention(nn.Module):
+    def __init__(self, encoder, decoder, device):
+        """
+        Initialize the Seq2Seq model with attention.
+
+        Args:
+            encoder (nn.Module): The encoder module.
+            decoder (nn.Module): The decoder module with attention.
+            device (torch.device): The device to run the model on (CPU/GPU).
+        """
+        super(Seq2SeqWithAttention, self).__init__()
+        self.encoder = encoder
+        self.decoder = decoder
+        self.device = device
+
+    def forward(self, src, trg, teacher_forcing_ratio=0.5):
+        """
+        Args:
+            src: Source input sequence [batch_size, src_len]
+            trg: Target input sequence [batch_size, trg_len]
+            teacher_forcing_ratio: Probability of using teacher forcing
+        Returns:
+            outputs: Predictions [batch_size, trg_len, output_dim]
+        """
+        batch_size = trg.shape[0]
+        trg_len = trg.shape[1]
+        output_dim = self.decoder.output_dim
+
+        # Initialize tensor to store decoder outputs
+        outputs = torch.zeros(batch_size, trg_len, output_dim).to(self.device)
+
+        # Encode the source sequence
+        encoder_outputs, hidden = self.encoder(src)
+
+        # Prepare hidden state for the decoder (handle bidirectionality)
+        hidden = self._transform_hidden(hidden)
+
+        # First input to the decoder is the <bos> token
+        input = trg[:, 0]
+
+        for t in range(1, trg_len):
+            # Decode the next token
+            output, hidden = self.decoder(input, hidden, encoder_outputs)
+
+            # Store prediction
+            outputs[:, t, :] = output
+
+            # Decide whether to use teacher forcing
+            teacher_force = torch.rand(1).item() < teacher_forcing_ratio
+            input = trg[:, t] if teacher_force else output.argmax(1)
+
+        return outputs
+
+    def _transform_hidden(self, hidden):
+        """
+        Transforms bidirectional encoder hidden state to match decoder requirements.
+        Args:
+            hidden: [n_layers * 2, batch_size, hidden_dim]
+        Returns:
+            hidden: [n_layers, batch_size, hidden_dim]
+        """
+        # Sum forward and backward hidden states for each layer
+        hidden = hidden.view(self.encoder.n_layers, 2, hidden.size(1), hidden.size(2))
+        hidden = hidden[:, 0, :, :] + hidden[:, 1, :, :]
+        return hidden
+
+import torch
+from torch import nn
+from common import Attention, BidirectionalEncoderWithAttention, DecoderWithAttention, Seq2SeqWithAttention
+
+def initialize_seq2seq_with_attention(sp_model, device, emb_dim=128, hidden_dim=256, n_layers=2, dropout=0.5):
+    """
+    Initializes a Seq2Seq model with attention.
+
+    Args:
+        sp_model (sentencepiece.SentencePieceProcessor): Preloaded SentencePiece model.
+        device (torch.device): Device to use for model computation.
+        emb_dim (int): Dimension of embedding layer.
+        hidden_dim (int): Dimension of hidden layers in the encoder and decoder.
+        n_layers (int): Number of layers in encoder and decoder.
+        dropout (float): Dropout rate for encoder and decoder.
+
+    Returns:
+        model (Seq2SeqWithAttention): Initialized Seq2Seq model with attention mechanism.
+        criterion (nn.CrossEntropyLoss): Loss function for training or evaluation.
+    """
+    # Define dimensions
+    input_dim = sp_model.get_piece_size()
+    output_dim = sp_model.get_piece_size()
+    pad_id = sp_model.pad_id()
+
+    # Initialize components
+    attention = Attention(encoder_hidden_dim=hidden_dim, decoder_hidden_dim=hidden_dim).to(device)
+    encoder = BidirectionalEncoderWithAttention(input_dim, emb_dim, hidden_dim, n_layers, dropout).to(device)
+    decoder = DecoderWithAttention(
+        output_dim=output_dim,
+        emb_dim=emb_dim,
+        hidden_dim=hidden_dim,
+        n_layers=n_layers,
+        dropout=dropout,
+        attention=attention,
+        encoder_hidden_dim=hidden_dim
+    ).to(device)
+
+    # Initialize Seq2Seq model
+    model = Seq2SeqWithAttention(encoder=encoder, decoder=decoder, device=device).to(device)
+
+    # Define loss function
+    criterion = nn.CrossEntropyLoss(ignore_index=pad_id)
+
+    return model, criterion
+
+# ==========================
 
 def get_setting(setting_name):
     """

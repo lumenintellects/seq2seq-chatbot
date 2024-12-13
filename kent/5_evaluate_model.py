@@ -34,8 +34,6 @@ BATCH_SIZE = 64  # Adjust as needed
 
 # ==========================
 
-path_input_csv = get_path_input_output_pairs(DATASET_NAME)
-path_vocab_pkl = get_path_vocab(DATASET_NAME)
 path_input_sequences_padded_batch_pattern = get_path_input_sequences_padded_batch_pattern(DATASET_NAME)
 path_output_sequences_padded_batch_pattern = get_path_output_sequences_padded_batch_pattern(DATASET_NAME)
 
