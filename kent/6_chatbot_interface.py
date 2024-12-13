@@ -53,55 +53,14 @@ def load_latest_model_state(model, path_model, logger):
         logger.error("Trained model state not found.")
         return False
 
-def generate_response(model, input_text, vocab, device, max_length=50):
-    model.eval()
-    with torch.no_grad():
-        # Tokenize and convert input to indices
-        tokens = [VOCAB_BOS] + input_text.split() + [VOCAB_EOS]
-        input_indices = [vocab.get(token, vocab[VOCAB_UNK]) for token in tokens]
-        input_tensor = torch.tensor(input_indices, dtype=torch.long).unsqueeze(0).to(device)  # (1, seq_len)
-
-        # Encode the input
-        _, hidden = model.encoder(input_tensor)
-
-        # Adjust hidden state to match decoder's n_layers
-        if hidden.size(0) == 1:  # If the encoder is single-layer
-            hidden = hidden.repeat(model.decoder.rnn.num_layers, 1, 1)  # Repeat for n_layers
-
-        # Prepare decoder input (<bos> token)
-        trg_idx = vocab["<bos>"]
-        trg_tensor = torch.tensor([[trg_idx]], dtype=torch.long).to(device)  # (1, 1)
-
-        # Generate response
-        response_tokens = []
-        for _ in range(max_length):
-            # Call the decoder
-            predictions, hidden = model.decoder(trg_tensor, hidden)
-
-            # Get the predicted token (argmax over vocabulary)
-            trg_idx = predictions.squeeze(0).argmax(1).item()  # Squeeze batch size, get token index
-            trg_tensor = torch.tensor([[trg_idx]], dtype=torch.long).to(device)  # Prepare input for next step
-
-            # Stop if <eos> is generated
-            if trg_idx == vocab["<eos>"]:
-                break
-
-            response_tokens.append(trg_idx)
-
-        # Convert indices back to tokens
-        idx_to_word = {idx: token for token, idx in vocab.items()}
-        response = " ".join([idx_to_word[idx] for idx in response_tokens])
-
-    return response
-
-def generate_response_beam_search(model, input_text, vocab, device, max_length=50, beam_width=3):
+def generate_response_beam_search(model, input_text, sp_model, device, max_length=50, beam_width=3):
     """
     Generate a response using beam search decoding.
 
     Args:
         model: Trained Seq2Seq model.
         input_text: User input text string.
-        vocab: Vocabulary mapping tokens to indices.
+        sp_model: SentencePieceProcessor for tokenization.
         device: The device (CPU/GPU) to use.
         max_length: Maximum length of the generated response.
         beam_width: Number of beams to keep at each step.
@@ -113,7 +72,7 @@ def generate_response_beam_search(model, input_text, vocab, device, max_length=5
     with torch.no_grad():
         # Tokenize and convert input to indices
         tokens = [VOCAB_BOS] + input_text.split() + [VOCAB_EOS]
-        input_indices = [vocab.get(token, vocab["<unk>"]) for token in tokens]
+        input_indices = [sp_model.piece_to_id(token) for token in tokens]
         input_tensor = torch.tensor(input_indices, dtype=torch.long).unsqueeze(0).to(device)  # (1, seq_len)
 
         # Encode the input
@@ -124,7 +83,7 @@ def generate_response_beam_search(model, input_text, vocab, device, max_length=5
             hidden = hidden.repeat(model.decoder.rnn.num_layers, 1, 1)  # Repeat for n_layers
 
         # Initialize beams: Each beam is a tuple (sequence, score, hidden)
-        beams = [([vocab[VOCAB_BOS]], 0.0, hidden)]  # Start with the <bos> token and score 0.0
+        beams = [([sp_model.bos_id()], 0.0, hidden)]  # Start with the <bos> token and score 0.0
 
         for _ in range(max_length):
             all_candidates = []  # To store all beam expansions
@@ -150,17 +109,19 @@ def generate_response_beam_search(model, input_text, vocab, device, max_length=5
             beams = sorted(all_candidates, key=lambda x: x[1], reverse=True)[:beam_width]
 
             # Stop if all beams end with <eos>
-            if all(seq[-1] == vocab[VOCAB_EOS] for seq, _, _ in beams):
+            if all(seq[-1] == sp_model.eos_id() for seq, _, _ in beams):
                 break
 
         # Select the best beam (highest score)
         best_sequence = beams[0][0]  # Sequence with the highest score
 
         # Convert indices back to tokens
-        idx_to_word = {idx: token for token, idx in vocab.items()}
-        response_tokens = [idx_to_word[idx] for idx in best_sequence if idx not in {vocab["<bos>"], vocab["<eos>"]}]
+        response_tokens = [sp_model.id_to_piece(idx) for idx in best_sequence if idx not in {sp_model.bos_id(), sp_model.eos_id()}]
 
-        return SPACE.join(response_tokens)
+        # Trim each response token to remove special characters
+        trimmed_response_tokens = [re.sub(r"[▁\s]", "", token) for token in response_tokens]
+
+        return SPACE.join(trimmed_response_tokens)
 
 def chatbot_interface(model, vocab, device):
     """
