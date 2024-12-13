@@ -3,7 +3,7 @@ import os
 import random
 import time
 import sentencepiece as sp
-from common import PATH_WORKSPACE_ROOT, Attention, BidirectionalEncoderWithAttention, DecoderWithAttention, Seq2SeqWithAttention, TupleDataset, get_path_input_output_pairs, get_path_sentencepiece_model
+from common import PATH_WORKSPACE_ROOT, Attention, BidirectionalEncoderWithAttention, DecoderWithAttention, Seq2SeqWithAttention, TupleDataset, get_path_input_output_pairs, get_path_sentencepiece_model, initialize_seq2seq_with_attention
 from common import get_setting_evaluation_loop_continue
 from common import Encoder, Decoder, Seq2Seq
 from common import PATH_WORKSPACE_ROOT, get_path_log, get_setting_evaluation_reload_model_in_loop, get_path_vocab
@@ -174,16 +174,6 @@ if __name__ == "__main__":
 
     logger.info("Initializing Seq2Seq model...")
 
-    # Hyperparameters
-    INPUT_DIM = sp_model.get_piece_size()
-    OUTPUT_DIM = sp_model.get_piece_size()
-    EMB_DIM = 128
-    ENCODER_HIDDEN_DIM = 256
-    DECODER_HIDDEN_DIM = ENCODER_HIDDEN_DIM # using the same hidden dimension for encoder and decoder
-    N_LAYERS = 2
-    DROPOUT = 0.5
-    BATCH_SIZE = 32
-
     # Check GPU Availability
     logger.info("Checking GPU availability...")
     logger.info(f"Is CUDA available: {torch.cuda.is_available()}")  # Should print True
@@ -193,39 +183,25 @@ if __name__ == "__main__":
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logger.info(f"Using device: {device}")
 
-    # Initialize encoder, decoder, and seq2seq model
-    logger.info("Initializing encoder, decoder, and seq2seq model...")
-
-    # Initialize attention mechanism
-    attention = Attention(encoder_hidden_dim=ENCODER_HIDDEN_DIM, decoder_hidden_dim=DECODER_HIDDEN_DIM).to(device)
-    logger.info(f"Attention mechanism initialized with encoder hidden dimension of {ENCODER_HIDDEN_DIM} and decoder hidden dimension of {DECODER_HIDDEN_DIM}.")
-
-    # Initialize encoder
-    encoder_with_attention = BidirectionalEncoderWithAttention(
-        INPUT_DIM, EMB_DIM, ENCODER_HIDDEN_DIM, N_LAYERS, DROPOUT).to(device)
-    logger.info(f"Encoder initialized with input dimension of {INPUT_DIM}, embedding dimension of {EMB_DIM}, hidden dimension of {ENCODER_HIDDEN_DIM}, {N_LAYERS} layers, and dropout of {DROPOUT}.")
-
-    # Initialize decoder with attention
-    decoder_with_attention = DecoderWithAttention(
-        output_dim=OUTPUT_DIM,
-        emb_dim=EMB_DIM,
-        hidden_dim=DECODER_HIDDEN_DIM,
-        n_layers=N_LAYERS,
-        dropout=DROPOUT,
-        attention=attention,
-        encoder_hidden_dim=ENCODER_HIDDEN_DIM,  # Pass this to support bidirectional encoding
-    ).to(device)
-    logger.info(f"Decoder initialized with output dimension of {OUTPUT_DIM}, embedding dimension of {EMB_DIM}, hidden dimension of {DECODER_HIDDEN_DIM}, {N_LAYERS} layers, and dropout of {DROPOUT}.") 
+    # Hyperparameters
+    INPUT_DIM = sp_model.get_piece_size()
+    OUTPUT_DIM = sp_model.get_piece_size()
+    EMB_DIM = 128
+    HIDDEN_DIM = 256
+    N_LAYERS = 2
+    DROPOUT = 0.5
+    BATCH_SIZE = 32
 
     # Initialize Seq2Seq model with attention
-    model_with_attention = Seq2SeqWithAttention(encoder=encoder_with_attention, decoder=decoder_with_attention, device=device).to(device)
+    model_with_attention, criterion = initialize_seq2seq_with_attention(
+        sp_model=sp_model,
+        device=device,
+        emb_dim=EMB_DIM,
+        hidden_dim=HIDDEN_DIM,
+        n_layers=N_LAYERS,
+        dropout=DROPOUT
+    )
     logger.info("Seq2Seq model with attention initialized.")
-
-    # Define Loss Function and Optimizer
-    pad_id = sp_model.pad_id()
-    criterion = nn.CrossEntropyLoss(ignore_index=pad_id)
-    optimizer = torch.optim.Adam(model_with_attention.parameters(), lr=0.001)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=3, verbose=True)
 
     # If model state exists, load it
     if os.path.exists(path_model):
@@ -236,6 +212,15 @@ if __name__ == "__main__":
         logger.info("Model state not found. Initializing new model.")
 
 # ==========================
+
+    # Evaluation Loop
+    logger.info("Evaluating...")
+
+    # Define Loss Function and Optimizer
+    pad_id = sp_model.pad_id()
+    criterion = nn.CrossEntropyLoss(ignore_index=pad_id)
+    optimizer = torch.optim.Adam(model_with_attention.parameters(), lr=0.001)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=3, verbose=True)
 
     # Initialize accumulators for overall scores
     cumulative_loss = 0
