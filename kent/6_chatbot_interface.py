@@ -1,16 +1,15 @@
 import glob
 import os
 import time
+import sentencepiece as sp
 import re
-from common import PATH_WORKSPACE_ROOT, get_path_input_output_pairs
-from common import Encoder, Decoder, Seq2Seq
+from common import FILE_MODE_READ_BINARY, PATH_WORKSPACE_ROOT, SPACE, VOCAB_BOS, VOCAB_EOS, VOCAB_PAD, VOCAB_UNK, get_path_input_output_pairs, get_path_sentencepiece_model, initialize_seq2seq
 from common import PATH_WORKSPACE_ROOT, get_path_log, get_path_vocab
 from common import get_path_input_sequences, get_path_output_sequences
 from common import get_path_input_sequences_padded_batch_pattern, get_path_output_sequences_padded_batch_pattern
 from common import get_path_model, get_setting_evaluation_subset_size
 import torch
 import torch.nn as nn
-import pickle
 import logging
 
 # Set the current working directory using the constant from common.py
@@ -20,14 +19,11 @@ DATASET_NAME = 'ubuntu_dialogue_corpus_000'
 LOG_BASE_FILENAME = "6_chatbot_interface"
 
 MODEL_NAME = 'seq2seq'
-MODEL_VERSION = '1.0'
+MODEL_VERSION = '2.0'
 
-TEST_DATA_PROPORTION = 0.2
 RANDOM_SEED = 42
 
-SUBSET_SIZE = get_setting_evaluation_subset_size()  # Number of sequences in each subset
-TEST_SIZE = 0.2  # Proportion of the subset to use for testing
-BATCH_SIZE = 64  # Adjust as needed
+CHATBOT_COMMAND_EXIT = "exit"
 
 # ==========================
 
@@ -61,12 +57,12 @@ def generate_response(model, input_text, vocab, device, max_length=50):
     model.eval()
     with torch.no_grad():
         # Tokenize and convert input to indices
-        tokens = ["<bos>"] + input_text.split() + ["<eos>"]
-        input_indices = [vocab.get(token, vocab["<unk>"]) for token in tokens]
+        tokens = [VOCAB_BOS] + input_text.split() + [VOCAB_EOS]
+        input_indices = [vocab.get(token, vocab[VOCAB_UNK]) for token in tokens]
         input_tensor = torch.tensor(input_indices, dtype=torch.long).unsqueeze(0).to(device)  # (1, seq_len)
 
         # Encode the input
-        encoder_outputs, hidden = model.encoder(input_tensor)
+        _, hidden = model.encoder(input_tensor)
 
         # Adjust hidden state to match decoder's n_layers
         if hidden.size(0) == 1:  # If the encoder is single-layer
@@ -116,19 +112,19 @@ def generate_response_beam_search(model, input_text, vocab, device, max_length=5
     model.eval()
     with torch.no_grad():
         # Tokenize and convert input to indices
-        tokens = ["<bos>"] + input_text.split() + ["<eos>"]
+        tokens = [VOCAB_BOS] + input_text.split() + [VOCAB_EOS]
         input_indices = [vocab.get(token, vocab["<unk>"]) for token in tokens]
         input_tensor = torch.tensor(input_indices, dtype=torch.long).unsqueeze(0).to(device)  # (1, seq_len)
 
         # Encode the input
-        encoder_outputs, hidden = model.encoder(input_tensor)
+        _, hidden = model.encoder(input_tensor)
 
         # Adjust hidden state to match decoder's n_layers
         if hidden.size(0) == 1:  # If the encoder is single-layer
             hidden = hidden.repeat(model.decoder.rnn.num_layers, 1, 1)  # Repeat for n_layers
 
         # Initialize beams: Each beam is a tuple (sequence, score, hidden)
-        beams = [([vocab["<bos>"]], 0.0, hidden)]  # Start with the <bos> token and score 0.0
+        beams = [([vocab[VOCAB_BOS]], 0.0, hidden)]  # Start with the <bos> token and score 0.0
 
         for _ in range(max_length):
             all_candidates = []  # To store all beam expansions
@@ -154,7 +150,7 @@ def generate_response_beam_search(model, input_text, vocab, device, max_length=5
             beams = sorted(all_candidates, key=lambda x: x[1], reverse=True)[:beam_width]
 
             # Stop if all beams end with <eos>
-            if all(seq[-1] == vocab["<eos>"] for seq, _, _ in beams):
+            if all(seq[-1] == vocab[VOCAB_EOS] for seq, _, _ in beams):
                 break
 
         # Select the best beam (highest score)
@@ -164,7 +160,7 @@ def generate_response_beam_search(model, input_text, vocab, device, max_length=5
         idx_to_word = {idx: token for token, idx in vocab.items()}
         response_tokens = [idx_to_word[idx] for idx in best_sequence if idx not in {vocab["<bos>"], vocab["<eos>"]}]
 
-        return " ".join(response_tokens)
+        return SPACE.join(response_tokens)
 
 def chatbot_interface(model, vocab, device):
     """
@@ -182,7 +178,7 @@ def chatbot_interface(model, vocab, device):
         logger.info(f"User Input: {user_input}")
 
         # Check for exit command
-        if user_input.lower() == "exit":
+        if user_input.lower() == CHATBOT_COMMAND_EXIT:
             print("Chatbot: Goodbye!")
             break
 
@@ -232,42 +228,21 @@ if __name__ == "__main__":
 
     # ==========================
 
-    path_input_csv = get_path_input_output_pairs(DATASET_NAME)
-    path_vocab_pkl = get_path_vocab(DATASET_NAME)
-    path_input_sequences = get_path_input_sequences(DATASET_NAME)
-    path_output_sequences = get_path_output_sequences(DATASET_NAME)
     path_input_sequences_padded_batch_pattern = get_path_input_sequences_padded_batch_pattern(DATASET_NAME)
     path_output_sequences_padded_batch_pattern = get_path_output_sequences_padded_batch_pattern(DATASET_NAME)
+    path_sentencepiece_model = get_path_sentencepiece_model(DATASET_NAME)
 
     # Define the save path
     path_model = get_path_model(MODEL_NAME, MODEL_VERSION)
 
     # ==========================
 
-    # Check for existing vocabulary
-    if os.path.exists(path_vocab_pkl):
-        logger.info("Vocabulary file found. Loading vocabulary...")
-        with open(path_vocab_pkl, "rb") as vocab_file:
-            vocab = pickle.load(vocab_file)
-        logger.info(f"Vocabulary loaded. Size: {len(vocab)}")
+    # Load SentencePiece model
+    if os.path.exists(path_sentencepiece_model):
+        sp_model = sp.SentencePieceProcessor(model_file=path_sentencepiece_model)
+        logger.info(f"Loaded SentencePiece model from {path_sentencepiece_model}.")
     else:
-        logger.error("Vocabulary file not found. Unable to proceed, exiting...")
-        exit()
-
-    # Check for previous serialized padded input sequences matching batch file name pattern
-    if len(glob.glob(path_input_sequences_padded_batch_pattern)) > 0:
-        logger.info("Serialized padded input sequences found.")
-    else:
-        logger.error("Serialized padded input sequences not found. Unable to proceed, exiting...")
-        exit()
-
-    padding_value = vocab["<pad>"]
-
-    # Check for previous serialized output sequences
-    if os.path.exists(path_output_sequences):
-        logger.info("Serialized output sequences found.")
-    else:
-        logger.error("Serialized output sequences not found. Unable to proceed, exiting...")
+        logger.error("SentencePiece model file not found. Exiting...")
         exit()
 
     input_sequences_padded = torch.cat([torch.load(file, weights_only=True) for file in glob.glob(path_input_sequences_padded_batch_pattern)], dim=0)
@@ -284,39 +259,48 @@ if __name__ == "__main__":
 
     logger.info("Initializing Seq2Seq model...")
 
-    # Hyperparameters
-    INPUT_DIM = len(vocab)
-    OUTPUT_DIM = len(vocab)
-    EMB_DIM = 256
-    HIDDEN_DIM = 512
-    N_LAYERS = 2
-    DROPOUT = 0.5
-    BATCH_SIZE = 64
-    num_epochs = 10
-
     # Check GPU Availability
     logger.info("Checking GPU availability...")
     logger.info(f"Is CUDA available: {torch.cuda.is_available()}")  # Should print True
     logger.info(f"Device ID: {torch.cuda.current_device()}")  # Should print the device ID (e.g., 0)
     logger.info(f"Device Name: {torch.cuda.get_device_name(0)}")  # Should print the name of the GPU
 
-    # Initialize encoder, decoder, and seq2seq model
-    logger.info("Initializing encoder, decoder, and seq2seq model...")
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    encoder = Encoder(INPUT_DIM, EMB_DIM, HIDDEN_DIM, N_LAYERS, DROPOUT).to(device)
-    decoder = Decoder(OUTPUT_DIM, EMB_DIM, HIDDEN_DIM, N_LAYERS, DROPOUT).to(device)
-    model = Seq2Seq(encoder, decoder, device).to(device)
+    logger.info(f"Using device: {device}")
+
+    # Hyperparameters
+    INPUT_DIM = sp_model.get_piece_size()
+    OUTPUT_DIM = sp_model.get_piece_size()
+    EMB_DIM = 128
+    HIDDEN_DIM = 256
+    N_LAYERS = 2
+    DROPOUT = 0.5
+    BATCH_SIZE = 32
+
+    # Initialize Seq2Seq model
+    model, criterion = initialize_seq2seq(
+        sp_model=sp_model,
+        device=device,
+        emb_dim=EMB_DIM,
+        hidden_dim=HIDDEN_DIM,
+        n_layers=N_LAYERS,
+        dropout=DROPOUT
+    )
+
+    # If model state exists, load it
+    if os.path.exists(path_model):
+        logger.info(f"Loading model state: {path_model}")
+        model.load_state_dict(torch.load(path_model, weights_only=True))
+        logger.info("Model state loaded.")
+    else:
+        logger.info("Model state not found. Initializing new model.")
 
     # Define Loss Function and Optimizer
-    criterion = nn.CrossEntropyLoss(ignore_index=padding_value)
+    pad_id = sp_model.pad_id()
+    criterion = nn.CrossEntropyLoss(ignore_index=pad_id)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-
-    # Load the latest model state
-    if not load_latest_model_state(model, path_model, logger):
-        logger.error("Unable to load model state. Exiting...")
-        exit()
 
 # ==========================
 
     # Launch chatbot interface
-    chatbot_interface(model, vocab, device)
+    chatbot_interface(model, sp_model, device)

@@ -14,6 +14,7 @@ COL_INPUT = 'input'
 COL_OUTPUT = 'output'
 
 EMPTY_STRING = ''
+SPACE = ' '
 
 FILE_MODE_WRITE = 'w'
 FILE_MODE_READ = 'r'
