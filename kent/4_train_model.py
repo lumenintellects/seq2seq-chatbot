@@ -3,7 +3,7 @@ import os
 import random
 import time
 import sentencepiece as sp
-from common import PATH_WORKSPACE_ROOT, TupleDataset, get_path_sentencepiece_model, get_setting_training_loop_continue, get_setting_next_subset_continue
+from common import PATH_WORKSPACE_ROOT, TupleDataset, get_path_sentencepiece_model, get_setting_training_loop_continue, get_setting_next_subset_continue, initialize_seq2seq
 from common import get_setting_training_subset_size
 from common import Encoder, Decoder, Seq2Seq
 from common import PATH_WORKSPACE_ROOT, get_path_log, get_path_input_output_pairs
@@ -93,15 +93,6 @@ if __name__ == "__main__":
 
     logger.info("Initializing Seq2Seq model...")
 
-    # Hyperparameters
-    INPUT_DIM = sp_model.get_piece_size()
-    OUTPUT_DIM = sp_model.get_piece_size()
-    EMB_DIM = 128
-    HIDDEN_DIM = 256
-    N_LAYERS = 2
-    DROPOUT = 0.5
-    BATCH_SIZE = 32
-
     # Check GPU Availability
     logger.info("Checking GPU availability...")
     logger.info(f"Is CUDA available: {torch.cuda.is_available()}")  # Should print True
@@ -111,25 +102,24 @@ if __name__ == "__main__":
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logger.info(f"Using device: {device}")
 
-    # Initialize encoder, decoder, and seq2seq model
-    logger.info("Initializing encoder, decoder, and seq2seq model...")
-
-    # Initialize encoder
-    encoder = Encoder(INPUT_DIM, EMB_DIM, HIDDEN_DIM, N_LAYERS, DROPOUT).to(device)
-    logger.info("Encoder initialized with input dimension of {INPUT_DIM}, embedding dimension of {EMB_DIM}, hidden dimension of {HIDDEN_DIM}, {N_LAYERS} layers, and dropout of {DROPOUT}.")
-
-    # Initialize decoder
-    decoder = Decoder(OUTPUT_DIM, EMB_DIM, HIDDEN_DIM, N_LAYERS, DROPOUT).to(device)
-    logger.info("Decoder initialized with output dimension of {OUTPUT_DIM}, embedding dimension of {EMB_DIM}, hidden dimension of {HIDDEN_DIM}, {N_LAYERS} layers, and dropout of {DROPOUT}.")  
+    # Hyperparameters
+    INPUT_DIM = sp_model.get_piece_size()
+    OUTPUT_DIM = sp_model.get_piece_size()
+    EMB_DIM = 128
+    HIDDEN_DIM = 256
+    N_LAYERS = 2
+    DROPOUT = 0.5
+    BATCH_SIZE = 32
 
     # Initialize Seq2Seq model
-    model = Seq2Seq(encoder, decoder, device).to(device)
-
-    # Define Loss Function and Optimizer
-    pad_id = sp_model.pad_id()
-    criterion = nn.CrossEntropyLoss(ignore_index=pad_id)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=3, verbose=True)
+    model, criterion = initialize_seq2seq(
+        sp_model=sp_model,
+        device=device,
+        emb_dim=EMB_DIM,
+        hidden_dim=HIDDEN_DIM,
+        n_layers=N_LAYERS,
+        dropout=DROPOUT
+    )
 
     # If model state exists, load it
     if os.path.exists(path_model):
@@ -143,6 +133,12 @@ if __name__ == "__main__":
 
     # Training Loop
     logger.info("Training...")
+
+    # Define Loss Function and Optimizer
+    pad_id = sp_model.pad_id()
+    criterion = nn.CrossEntropyLoss(ignore_index=pad_id)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=3, verbose=True)
 
     best_val_loss = float("inf")  # Initialize best validation loss as infinity
     no_improvement_epochs = 0  # Counter for epochs without improvement

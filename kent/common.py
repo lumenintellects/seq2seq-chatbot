@@ -445,6 +445,41 @@ class Seq2Seq(nn.Module):
         outputs, _ = self.decoder(trg, hidden)  # Decode based on the context vector
         return outputs
 
+def initialize_seq2seq(sp_model, device, emb_dim=128, hidden_dim=256, n_layers=2, dropout=0.5):
+    """
+    Initializes a Seq2Seq model (without attention).
+
+    Args:
+        sp_model (sentencepiece.SentencePieceProcessor): Preloaded SentencePiece model.
+        device (torch.device): Device to use for model computation.
+        emb_dim (int): Dimension of embedding layer.
+        hidden_dim (int): Dimension of hidden layers in the encoder and decoder.
+        n_layers (int): Number of layers in encoder and decoder.
+        dropout (float): Dropout rate for encoder and decoder.
+
+    Returns:
+        model (Seq2Seq): Initialized Seq2Seq model.
+        criterion (nn.CrossEntropyLoss): Loss function for training or evaluation.
+    """
+    # Define dimensions
+    input_dim = sp_model.get_piece_size()
+    output_dim = sp_model.get_piece_size()
+    pad_id = sp_model.pad_id()
+
+    # Initialize encoder
+    encoder = Encoder(input_dim, emb_dim, hidden_dim, n_layers, dropout).to(device)
+
+    # Initialize decoder
+    decoder = Decoder(output_dim, emb_dim, hidden_dim, n_layers, dropout).to(device)
+
+    # Initialize Seq2Seq model
+    model = Seq2Seq(encoder=encoder, decoder=decoder, device=device).to(device)
+
+    # Define loss function
+    criterion = nn.CrossEntropyLoss(ignore_index=pad_id)
+
+    return model, criterion
+
 # ==========================
 
 class Attention(nn.Module):
@@ -769,7 +804,6 @@ def get_setting_training_subset_size():
         int: The value of the setting 'trainingSubsetSize'.
     """
     return get_setting(SETTING_TRAINING_SUBSET_SIZE)
-
 
 def get_setting_evaluation_subset_size():
     """
