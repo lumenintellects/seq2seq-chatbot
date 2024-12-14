@@ -9,7 +9,7 @@ This project implements a chatbot using a **Seq2Seq (Sequence-to-Sequence)** neu
 The code submission is organized as follows:
 
 ```shell
- CSCK507_EMA_GroupC/
+ CSCK507_EMA_GroupC_Code/
  --dataset/
  --1_load_and_inspect_dataset.py
  --2_preprocess_dataset_ubuntu_dialogue_corpus.py
