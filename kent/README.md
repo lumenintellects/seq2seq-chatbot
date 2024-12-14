@@ -2,7 +2,7 @@
 
 ## Overview
 
-This project implements a chatbot using a **Seq2Seq (Sequence-to-Sequence)** neural network model. The chatbot leverages a trained SentencePiece tokenizer for text preprocessing and supports advanced features like sequence padding and batching. The project includes both training and evaluation pipelines, culminating in a functional chatbot interface.
+This project implements a chatbot using a **Seq2Seq (Sequence-to-Sequence)** neural network model. The chatbot leverages a trained SentencePiece tokenizer for text preprocessing and supports advanced features like sequence padding and batching. The project includes the end-to-end Generative Chatbot Development pipeline from initial text corpus inspection to the final chatbot interface.
 
 ## Code Submission Structure
 
