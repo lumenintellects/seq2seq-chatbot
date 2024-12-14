@@ -10,18 +10,26 @@ The code submission is organized as follows:
 
 ```shell
  CSCK507_EMA_GroupC_Code/
- --dataset/
- --1_load_and_inspect_dataset.py
- --2_preprocess_dataset_ubuntu_dialogue_corpus.py
- --3_tokenize_dataset.py
- --4_train_model.py
- --4_train_model_with_attention.py
- --5_evaluate_model.py
- --5_evaluate_model_with_attention.py
- --6_chatbot_interface.py
- --common.py
- --settings.json
- --README.md
+--flow_diagrams/
+----scriptset_common_library.svg
+----chatbot_scriptset_workflow.svg
+----ubuntu_dialogue_corpus_preprocessing.svg
+----dataset_tokenization_using_sentencepiece.svg
+----seq2seq_model_training.svg
+----seq2seq_model_evaluation.svg
+----chatbot_interface.svg
+--dataset/
+--1_load_and_inspect_dataset.py
+--2_preprocess_dataset_ubuntu_dialogue_corpus.py
+--3_tokenize_dataset.py
+--4_train_model.py
+--4_train_model_with_attention.py
+--5_evaluate_model.py
+--5_evaluate_model_with_attention.py
+--6_chatbot_interface.py
+--common.py
+--settings.json
+--README.md
 ```
 
 ## Scripts
