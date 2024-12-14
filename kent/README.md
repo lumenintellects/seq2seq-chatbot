@@ -161,7 +161,7 @@ Team members:
 |Dogan, Ismail|Reporting|
 |Geoffrey, Kent|Script Development, Result Analysis, Meeting Organizer/Scribe|
 |Morgan, Chris|Testing and Video Presentation, Meeting Organizer and Facilitator|
-|Pitertsev, Artem|Comparative Model Development and Reporting|
+|Pitertsev, Artem|Comparative Model Development, Git Repo Setup and Reporting|
 
 ## Acknowledgements
 
