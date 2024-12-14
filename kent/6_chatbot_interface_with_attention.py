@@ -57,7 +57,7 @@ def generate_response_beam_search(model, input_text, sp_model, device, max_lengt
     Generate a response using beam search decoding.
 
     Args:
-        model: Trained Seq2Seq model.
+        model: Trained Seq2Seq model with attention.
         input_text: User input text string.
         sp_model: SentencePieceProcessor for tokenization.
         device: The device (CPU/GPU) to use.
@@ -74,33 +74,26 @@ def generate_response_beam_search(model, input_text, sp_model, device, max_lengt
         input_indices = [sp_model.piece_to_id(token) for token in tokens]
         input_tensor = torch.tensor(input_indices, dtype=torch.long).unsqueeze(0).to(device)  # (1, seq_len)
 
-        # Encode the input
+        # Encode input and transform hidden state
         encoder_outputs, hidden = model.encoder(input_tensor)
+        print(f"Raw Hidden Shape (Encoder): {hidden.shape}")
+        hidden = model._transform_hidden(hidden)  # Apply transformation
+        print(f"Transformed Hidden Shape: {hidden.shape}")
 
-        # Initialize beams: Each beam is a tuple (sequence, score, hidden, encoder_outputs)
-        beams = [([sp_model.bos_id()], 0.0, hidden, encoder_outputs)]  # Start with the <bos> token and score 0.0
+        # Initialize beams: (sequence, score, hidden, encoder_outputs)
+        beams = [([sp_model.bos_id()], 0.0, hidden, encoder_outputs)]
 
         for _ in range(max_length):
-            all_candidates = []  # To store all beam expansions
-
+            all_candidates = []
             for seq, score, hidden, encoder_outputs in beams:
-                # Prepare decoder input for the last token in the sequence
-                trg_tensor = torch.tensor([[seq[-1]]], dtype=torch.long).to(device)  # (1, 1)
-
-                # Log encoder_outputs shape
-                logger.info(f"Encoder Outputs Shape: {encoder_outputs.shape}")
-
-                # Decode the next token (with attention)
-                predictions, hidden, _ = model.decoder(trg_tensor, hidden, encoder_outputs)
-
-                # Get log probabilities
-                log_probs = torch.log_softmax(predictions.squeeze(0), dim=-1)  # (1, vocab_size)
-
-                # Expand each beam with top beam_width tokens
+                trg_tensor = torch.tensor([[seq[-1]]], dtype=torch.long).to(device)
+                predictions, hidden = model.decoder(trg_tensor, hidden, encoder_outputs)
+                log_probs = torch.log_softmax(predictions.squeeze(0), dim=-1)
                 top_tokens = torch.topk(log_probs, beam_width)
+
                 for i in range(beam_width):
-                    next_token = top_tokens.indices[0, i].item()
-                    next_score = score + top_tokens.values[0, i].item()  # Accumulate log-probabilities
+                    next_token = top_tokens.indices[i].item()
+                    next_score = score + top_tokens.values[i].item()
                     all_candidates.append((seq + [next_token], next_score, hidden, encoder_outputs))
 
             # Prune to the top beam_width candidates
@@ -111,12 +104,8 @@ def generate_response_beam_search(model, input_text, sp_model, device, max_lengt
                 break
 
         # Select the best beam (highest score)
-        best_sequence = beams[0][0]  # Sequence with the highest score
-
-        # Convert indices back to tokens
+        best_sequence = beams[0][0]
         response_tokens = [sp_model.id_to_piece(idx) for idx in best_sequence if idx not in {sp_model.bos_id(), sp_model.eos_id()}]
-
-        # Trim each response token to remove special characters
         trimmed_response_tokens = [re.sub(r"[▁\s]", "", token) for token in response_tokens]
 
         return SPACE.join(trimmed_response_tokens)

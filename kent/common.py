@@ -639,18 +639,22 @@ class DecoderWithAttention(nn.Module):
             hidden (Tensor): Updated hidden state [n_layers, batch_size, hidden_dim].
         """
         # Input shape: [batch_size]
-        input = input.unsqueeze(1)  # Add a time dimension [batch_size, 1]
+        input = input.view(-1, 1)  # Ensure proper shape [batch_size, 1]
 
         # Apply embedding and dropout
         embedded = self.dropout(self.embedding(input))  # [batch_size, 1, emb_dim]
+        print(f"Embedded Shape After Fix: {embedded.shape}")
 
         # Compute attention weights and context
         a = self.attention(hidden[-1], encoder_outputs)  # [batch_size, src_len]
-        a = a.unsqueeze(1)  # [batch_size, 1, src_len]
+        a = a.unsqueeze(1)  # Add time dimension: [batch_size, 1, src_len]
         context = torch.bmm(a, encoder_outputs)  # [batch_size, 1, encoder_hidden_dim * 2]
+        print(f"Context Shape: {context.shape}")
 
         # Concatenate context with embedded input
         rnn_input = torch.cat((embedded, context), dim=2)  # [batch_size, 1, emb_dim + encoder_hidden_dim * 2]
+        print(f"RNN Input Shape: {rnn_input.shape}")
+        print(f"Hidden Shape: {hidden.shape}")
 
         # Pass through GRU
         output, hidden = self.rnn(rnn_input, hidden)  # output: [batch_size, 1, hidden_dim]
@@ -699,14 +703,16 @@ class Seq2SeqWithAttention(nn.Module):
         encoder_outputs, hidden = self.encoder(src)
 
         # Prepare hidden state for the decoder (handle bidirectionality)
-        hidden = self._transform_hidden(hidden)
+        print(f"Original Hidden Shape: {hidden.shape}")  # Should be [n_layers * 2, batch_size, hidden_dim]
+        transformed_hidden = self._transform_hidden(hidden)
+        print(f"Transformed Hidden Shape: {transformed_hidden.shape}")  # Should be [n_layers, batch_size, hidden_dim]
 
         # First input to the decoder is the <bos> token
         input = trg[:, 0]
 
         for t in range(1, trg_len):
             # Decode the next token
-            output, hidden = self.decoder(input, hidden, encoder_outputs)
+            output, transformed_hidden = self.decoder(input, transformed_hidden, encoder_outputs)
 
             # Store prediction
             outputs[:, t, :] = output
@@ -725,10 +731,14 @@ class Seq2SeqWithAttention(nn.Module):
         Returns:
             hidden: [n_layers, batch_size, hidden_dim]
         """
-        # Sum forward and backward hidden states for each layer
-        hidden = hidden.view(self.encoder.n_layers, 2, hidden.size(1), hidden.size(2))
-        hidden = hidden[:, 0, :, :] + hidden[:, 1, :, :]
-        return hidden
+        # Split hidden state into forward and backward components
+        forward_hidden = hidden[0:hidden.size(0):2]  # Select even indices
+        backward_hidden = hidden[1:hidden.size(0):2]  # Select odd indices
+
+        # Sum the forward and backward states
+        transformed_hidden = forward_hidden + backward_hidden  # [n_layers, batch_size, hidden_dim]
+
+        return transformed_hidden
 
 import torch
 from torch import nn
