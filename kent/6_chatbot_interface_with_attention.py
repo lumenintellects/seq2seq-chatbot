@@ -42,7 +42,7 @@ def load_latest_model_state(model, path_model, logger):
         logger.info("Loading model state...")
         # place in try-catch block to handle exceptions
         try:
-            model.load_state_dict(torch.load(path_model, map_location=torch.device('cpu')))
+            model.load_state_dict(torch.load(path_model, map_location=torch.device('cpu'), weights_only=True))
         except Exception as e:
             logger.error(f"Error loading model state: {e}")
             return False
@@ -193,10 +193,10 @@ if __name__ == "__main__":
         logger.error("SentencePiece model file not found. Exiting...")
         exit()
 
-    input_sequences_padded = torch.cat([torch.load(file) for file in glob.glob(path_input_sequences_padded_batch_pattern)], dim=0)
+    input_sequences_padded = torch.cat([torch.load(file, weights_only=True) for file in glob.glob(path_input_sequences_padded_batch_pattern)], dim=0)
     logger.info("Loaded input sequences from files.")
 
-    output_sequences_padded = torch.cat([torch.load(file) for file in glob.glob(path_output_sequences_padded_batch_pattern)], dim=0)
+    output_sequences_padded = torch.cat([torch.load(file, weights_only=True) for file in glob.glob(path_output_sequences_padded_batch_pattern)], dim=0)
     logger.info("Loaded output sequences from file.")
 
     # Combine input and output sequences into a single list of pairs
@@ -207,16 +207,14 @@ if __name__ == "__main__":
 
     logger.info("Initializing Seq2Seq model...")
 
-    # Check device availability
-    if torch.backends.mps.is_available():
-        device = torch.device('mps')
-        logger.info("Using Metal Performance Shaders (MPS) for acceleration.")
-    elif torch.cuda.is_available():
-        device = torch.device('cuda')
-        logger.info(f"Using CUDA on device: {torch.cuda.get_device_name(0)}")
-    else:
-        device = torch.device('cpu')
-        logger.info("Using CPU as no GPU backend is available.")
+    # Check GPU Availability
+    logger.info("Checking GPU availability...")
+    logger.info(f"Is CUDA available: {torch.cuda.is_available()}")  # Should print True
+    logger.info(f"Device ID: {torch.cuda.current_device()}")  # Should print the device ID (e.g., 0)
+    logger.info(f"Device Name: {torch.cuda.get_device_name(0)}")  # Should print the name of the GPU
+
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    logger.info(f"Using device: {device}")
 
     # Hyperparameters
     INPUT_DIM = sp_model.get_piece_size()
@@ -241,7 +239,7 @@ if __name__ == "__main__":
     # If model state exists, load it
     if os.path.exists(path_model):
         logger.info(f"Loading model state: {path_model}")
-        model_with_attention.load_state_dict(torch.load(path_model, map_location=torch.device('cpu')))
+        model_with_attention.load_state_dict(torch.load(path_model, weights_only=True))
         logger.info("Model state loaded.")
     else:
         logger.info("Model state not found. Initializing new model.")
