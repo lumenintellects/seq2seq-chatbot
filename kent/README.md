@@ -27,6 +27,7 @@ The code submission is organized as follows:
 --5_evaluate_model.py
 --5_evaluate_model_with_attention.py
 --6_chatbot_interface.py
+--6_chatbot_interface_with_attention.py
 --common.py
 --settings.json
 --README.md
@@ -68,7 +69,7 @@ The code submission is organized as follows:
 - Evaluates the trained model on test data.
 - Computes metrics such as BLEU score and average loss.
 
-### `6_chatbot_interface.py`
+### `6_chatbot_interface.py` and `6_chatbot_interface_with_attention.py`
 
 - Provides a command-line interface for the chatbot.
 - Accepts user inputs and generates responses using beam search decoding.
