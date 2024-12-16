@@ -138,7 +138,7 @@ if __name__ == "__main__":
     pad_id = sp_model.pad_id()
     criterion = nn.CrossEntropyLoss(ignore_index=pad_id)
     optimizer = torch.optim.Adam(model_with_attention.parameters(), lr=0.001)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=3, verbose=True)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=PATIENCE_LEVEL, verbose=True)
 
     best_val_loss = float("inf")  # Initialize best validation loss as infinity
     no_improvement_epochs = 0  # Counter for epochs without improvement
